@@ -1,0 +1,1218 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>Hangar Planner Part-145 Colico</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.5.0/chart.umd.min.js"></script>
+<style>
+:root{
+  --bg:#0f172a;--panel:rgba(255,255,255,.06);--border:rgba(255,255,255,.1);
+  --text:#e2e8f0;--muted:#94a3b8;--primary:#3b82f6;
+  --green:#16a34a;--red:#dc2626;--yellow:#ca8a04;--orange:#ea580c;
+  --radius:14px;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{background:linear-gradient(135deg,#0f172a,#1e293b);color:var(--text);font-family:"Segoe UI",Tahoma,Arial,sans-serif;min-height:100vh;}
+.app{max-width:1700px;margin:0 auto;padding:20px;}
+
+/* TOPBAR */
+.topbar{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:14px;
+  margin-bottom:22px;background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);padding:16px 22px;}
+.topbar h1{font-size:20px;color:#fff;font-weight:800;}
+.topbar p{font-size:12px;color:var(--muted);margin-top:3px;}
+.top-btns{display:flex;gap:8px;flex-wrap:wrap;}
+
+/* TABS */
+.tabs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:20px;}
+.tab-btn{background:var(--panel);border:1px solid var(--border);color:var(--text);
+  padding:9px 18px;border-radius:999px;cursor:pointer;font-size:14px;transition:.15s;}
+.tab-btn:hover{background:rgba(255,255,255,.12);}
+.tab-btn.active{background:var(--primary);border-color:var(--primary);color:#fff;font-weight:700;}
+.tab-pane{display:none;}
+.tab-pane.active{display:block;}
+
+/* BUTTON */
+.btn{display:inline-flex;align-items:center;gap:5px;border:none;border-radius:9px;
+  padding:9px 15px;cursor:pointer;font:inherit;font-size:13px;transition:.15s;}
+.btn:hover{filter:brightness(1.08);transform:translateY(-1px);}
+.btn-primary{background:var(--primary);color:#fff;}
+.btn-success{background:var(--green);color:#fff;}
+.btn-danger{background:var(--red);color:#fff;}
+.btn-warn{background:var(--orange);color:#fff;}
+.btn-ghost{background:rgba(255,255,255,.1);color:var(--text);}
+.btn-sm{padding:6px 11px;font-size:12px;}
+
+/* KPI */
+.kpi-group-title{font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;
+  letter-spacing:.08em;margin:16px 0 8px;padding-bottom:5px;border-bottom:1px solid var(--border);}
+.kpi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:11px;}
+.kpi-card{background:var(--panel);border:1px solid var(--border);border-radius:12px;
+  padding:14px 16px;position:relative;overflow:hidden;}
+.kpi-card::before{content:'';position:absolute;top:0;left:0;width:4px;height:100%;
+  background:var(--accent,#3b82f6);border-radius:4px 0 0 4px;}
+.kpi-card.green{--accent:#22c55e;}.kpi-card.red{--accent:#ef4444;}
+.kpi-card.yellow{--accent:#eab308;}.kpi-card.orange{--accent:var(--orange);}
+.kpi-card.purple{--accent:#8b5cf6;}.kpi-card.cyan{--accent:#06b6d4;}
+.kpi-card.rose{--accent:#f43f5e;}.kpi-card.blue{--accent:#3b82f6;}
+.kpi-label{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px;}
+.kpi-value{font-size:32px;font-weight:800;color:#fff;line-height:1;}
+.kpi-sub{font-size:11px;color:var(--muted);margin-top:4px;}
+
+/* BAIE */
+.bay-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(255px,1fr));gap:14px;}
+.bay-card{border-radius:14px;padding:16px;min-height:260px;cursor:pointer;
+  border:2px solid rgba(255,255,255,.15);transition:.2s;}
+.bay-card:hover{transform:translateY(-3px);box-shadow:0 16px 40px rgba(0,0,0,.4);}
+.bay-free{background:linear-gradient(135deg,#14532d,#16a34a);}
+.bay-occupied{background:linear-gradient(135deg,#7f1d1d,#dc2626);}
+.bay-waiting{background:linear-gradient(135deg,#78350f,#d97706);}
+.bay-title{font-size:20px;font-weight:800;margin-bottom:4px;}
+.bay-pill{display:inline-block;padding:3px 9px;border-radius:999px;
+  background:rgba(255,255,255,.2);font-size:11px;font-weight:700;text-transform:uppercase;margin-bottom:10px;}
+.bay-line{font-size:13px;margin:3px 0;line-height:1.4;}
+.bay-line strong{opacity:.6;font-weight:600;font-size:11px;text-transform:uppercase;}
+.bay-badge{display:inline-block;margin-top:8px;padding:5px 10px;
+  border-radius:8px;font-size:12px;font-weight:700;background:rgba(0,0,0,.28);}
+.bay-sit{margin-top:7px;font-size:12px;font-style:italic;opacity:.85;line-height:1.4;
+  background:rgba(0,0,0,.15);padding:6px 8px;border-radius:7px;}
+.bay-tqte{margin-top:6px;font-size:11px;background:rgba(0,0,0,.2);padding:4px 9px;border-radius:7px;}
+
+/* BLOCCO PRINCIPALE — colori menù */
+.prob-forza{background:#1e3a5f;color:#bfdbfe;}
+.prob-materiali{background:#7f1d1d;color:#fecaca;}
+.prob-logistica{background:#422006;color:#fef3c7;}
+.prob-difetti{background:#431407;color:#fed7aa;}
+.prob-nessuno{background:#14532d;color:#dcfce7;}
+
+/* PANEL, TABELLE */
+.panel{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);padding:18px;margin-bottom:18px;}
+.panel h2{color:#fff;font-size:15px;margin-bottom:14px;font-weight:700;}
+.panel h3{color:#fff;font-size:14px;margin-bottom:10px;font-weight:700;}
+.table-wrap{overflow:auto;border-radius:10px;border:1px solid var(--border);}
+table{width:100%;border-collapse:collapse;min-width:680px;}
+thead{background:rgba(255,255,255,.07);}
+th,td{padding:10px 11px;border-bottom:1px solid var(--border);text-align:left;font-size:13px;vertical-align:middle;}
+th{color:#fff;font-weight:700;white-space:nowrap;}
+td{color:var(--text);}
+tr:hover td{background:rgba(255,255,255,.03);}
+tr:last-child td{border-bottom:none;}
+.pill{display:inline-block;padding:3px 9px;border-radius:999px;font-size:11px;font-weight:700;}
+.pill-ok{background:#166534;color:#dcfce7;}
+.pill-late{background:#92400e;color:#fef3c7;}
+.pill-highlate{background:#7f1d1d;color:#fee2e2;}
+.pill-open{background:#1e3a5f;color:#bfdbfe;}
+
+/* FORM */
+.form-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;}
+.field label{display:block;font-size:11px;color:var(--muted);margin-bottom:4px;text-transform:uppercase;letter-spacing:.05em;}
+.field input,.field select,.field textarea{width:100%;background:#0f172a;border:1px solid var(--border);
+  border-radius:8px;padding:9px 11px;color:#fff;font:inherit;font-size:14px;}
+.field textarea{min-height:75px;resize:vertical;}
+.field input:focus,.field select:focus,.field textarea:focus{outline:none;border-color:var(--primary);}
+
+/* BLOCCO SELECT PRINCIPALE — grande e visibile */
+.blocco-select-wrap{background:rgba(239,68,68,.12);border:2px solid rgba(239,68,68,.4);
+  border-radius:12px;padding:14px;margin:14px 0;}
+.blocco-select-wrap label{font-size:13px;color:#fca5a5;font-weight:700;display:block;margin-bottom:8px;text-transform:uppercase;}
+.blocco-select-wrap select{width:100%;background:#1a0a0a;border:2px solid #dc2626;
+  border-radius:8px;padding:12px 14px;color:#fff;font:inherit;font-size:15px;font-weight:700;}
+
+/* QUICK BAR */
+.quick-bar{display:grid;grid-template-columns:1fr 1fr 1fr 180px 140px auto;gap:10px;
+  background:rgba(255,255,255,.05);border:1px solid var(--border);border-radius:12px;
+  padding:14px;margin-bottom:16px;align-items:end;}
+@media(max-width:1100px){.quick-bar{grid-template-columns:1fr 1fr;}}
+
+/* DATE GROUP */
+.date-group{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+.date-card{background:rgba(255,255,255,.04);border:1px solid var(--border);border-radius:10px;padding:12px;}
+.date-card-title{font-size:11px;color:var(--muted);font-weight:700;text-transform:uppercase;
+  letter-spacing:.06em;margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid var(--border);}
+.date-card.green-border{border-color:rgba(34,197,94,.4);}
+.date-card.red-border{border-color:rgba(239,68,68,.4);}
+
+/* TQTE */
+.tqte-row{display:grid;grid-template-columns:70px 90px 150px 1fr 120px 130px 36px;gap:8px;align-items:end;
+  background:rgba(255,255,255,.04);padding:10px;border-radius:10px;border:1px solid var(--border);margin-bottom:8px;}
+
+/* GRAFICI */
+.chart-wrap{position:relative;width:100%;height:280px;}
+.chart-wrap canvas{position:absolute;top:0;left:0;width:100%!important;height:100%!important;}
+.chart-panel{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);padding:16px;margin-bottom:18px;}
+.chart-panel h3{color:#fff;font-size:14px;font-weight:700;margin-bottom:12px;}
+.two-col{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
+@media(max-width:900px){.two-col{grid-template-columns:1fr;}}
+
+/* DIALOG */
+dialog{border:none;border-radius:16px;padding:0;width:min(960px,96vw);
+  background:#111827;color:#fff;box-shadow:0 24px 80px rgba(0,0,0,.6);}
+dialog::backdrop{background:rgba(0,0,0,.7);}
+.mh{padding:16px 22px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;}
+.mh h2{color:#fff;font-size:16px;}
+.mb{padding:18px 22px;max-height:78vh;overflow:auto;}
+.mf{padding:12px 22px;border-top:1px solid var(--border);display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap;}
+.close-x{background:rgba(255,255,255,.1);border:none;color:#fff;width:32px;height:32px;border-radius:50%;font-size:16px;cursor:pointer;}
+
+/* SEZIONI NEL DIALOG */
+.sect{margin:18px 0 10px;font-weight:700;color:#60a5fa;font-size:12px;
+  text-transform:uppercase;letter-spacing:.07em;padding-bottom:5px;border-bottom:1px solid rgba(96,165,250,.25);}
+
+/* PROBLEMA FREQ LIST */
+.pf-list{display:flex;flex-direction:column;gap:8px;}
+.pf-row{display:flex;justify-content:space-between;align-items:center;
+  background:rgba(255,255,255,.05);padding:10px 14px;border-radius:10px;}
+.pf-count{padding:4px 12px;border-radius:999px;background:rgba(255,255,255,.12);font-weight:800;font-size:15px;}
+
+/* TOOLBAR */
+.toolbar{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px;align-items:center;}
+::-webkit-scrollbar{width:5px;height:5px;}
+::-webkit-scrollbar-thumb{background:rgba(255,255,255,.15);border-radius:3px;}
+</style>
+</head>
+<body>
+<div class="app">
+
+<div class="topbar">
+  <div>
+    <h1>Hangar Planner Part-145 — Avincis Colico</h1>
+    <p>7 baie · KPI · WO · TQ/TE · localStorage · Microsoft Edge</p>
+  </div>
+  <div class="top-btns">
+    <button class="btn btn-success" id="btnAddHeli">+ Aggiungi elicottero</button>
+    <button class="btn btn-ghost" id="btnExport">Esporta JSON</button>
+    <button class="btn btn-ghost" id="btnImport">Importa JSON</button>
+    <button class="btn btn-ghost" id="btnReset">Demo</button>
+    <input type="file" id="importFile" accept=".json" style="display:none"/>
+  </div>
+</div>
+
+<div class="tabs">
+  <button class="tab-btn active" data-tab="tab-hangar">Occupazione Hangar</button>
+  <button class="tab-btn" data-tab="tab-ritardi">Ritardi</button>
+  <button class="tab-btn" data-tab="tab-problemi">Problemi e Blocchi</button>
+  <button class="tab-btn" data-tab="tab-kpi">KPI / Analisi</button>
+  <button class="tab-btn" data-tab="tab-flotta">Lista Flotta</button>
+</div>
+
+<!-- TAB HANGAR -->
+<div class="tab-pane active" id="tab-hangar">
+  <div id="kpiTop"></div>
+  <div class="panel">
+    <h2>Inserimento rapido baia</h2>
+    <div class="quick-bar">
+      <div class="field"><label>Baia</label><select id="qBaia"></select></div>
+      <div class="field"><label>Elicottero</label><select id="qMatricola"></select></div>
+      <div class="field"><label>WO</label><input id="qWO" placeholder="WO 12345"/></div>
+      <div class="field"><label>Uscita prevista</label><input type="datetime-local" id="qUscita"/></div>
+      <div class="field"><label>Stato</label>
+        <select id="qStato" style="width:100%;background:#0f172a;border:1px solid var(--border);
+          color:#fff;padding:9px 11px;border-radius:8px;font:inherit;font-size:14px;">
+          <option>occupata</option><option>prenotata</option><option>in attesa</option>
+        </select>
+      </div>
+      <button class="btn btn-primary" id="qSave" style="white-space:nowrap;align-self:end;">Assegna baia</button>
+    </div>
+    <p style="font-size:12px;color:var(--muted);">Clicca sulla card baia per tutti i dettagli: date complete, blocco, materiali, difetti, TQ/TE.</p>
+  </div>
+  <div class="panel">
+    <h2>Occupazione delle 7 baie</h2>
+    <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:14px;">
+      <span style="display:flex;align-items:center;gap:7px;font-size:13px;color:var(--muted);">
+        <span style="width:11px;height:11px;border-radius:50%;background:#16a34a;display:inline-block;"></span>Libera</span>
+      <span style="display:flex;align-items:center;gap:7px;font-size:13px;color:var(--muted);">
+        <span style="width:11px;height:11px;border-radius:50%;background:#dc2626;display:inline-block;"></span>Occupata</span>
+      <span style="display:flex;align-items:center;gap:7px;font-size:13px;color:var(--muted);">
+        <span style="width:11px;height:11px;border-radius:50%;background:#d97706;display:inline-block;"></span>Prenotata / In attesa</span>
+    </div>
+    <div class="bay-grid" id="bayGrid"></div>
+  </div>
+</div>
+
+<!-- TAB RITARDI -->
+<div class="tab-pane" id="tab-ritardi">
+  <div class="panel">
+    <h2>Tabella ritardi elicotteri in hangar</h2>
+    <div class="table-wrap">
+      <table>
+        <thead><tr>
+          <th>Baia</th><th>Matricola</th><th>Modello</th><th>MSN</th>
+          <th>Entrata prevista</th><th>Entrata effettiva</th>
+          <th>Uscita prevista</th><th>Uscita effettiva</th>
+          <th>Sosta prev. (h)</th><th>Sosta eff. (h)</th>
+          <th>Delta sosta</th><th>Stato</th>
+        </tr></thead>
+        <tbody id="delayBody"></tbody>
+      </table>
+    </div>
+  </div>
+  <div class="two-col">
+    <div class="chart-panel">
+      <h3>Elicotteri in ritardo per giorno (ultimi 7 gg)</h3>
+      <div class="chart-wrap"><canvas id="chartDelayDay"></canvas></div>
+    </div>
+    <div class="chart-panel">
+      <h3>Ritardo medio giornaliero in ore (ultimi 7 gg)</h3>
+      <div class="chart-wrap"><canvas id="chartAvgDelay"></canvas></div>
+    </div>
+  </div>
+</div>
+
+<!-- TAB PROBLEMI -->
+<div class="tab-pane" id="tab-problemi">
+  <div style="display:grid;grid-template-columns:2fr 1fr;gap:16px;">
+    <div class="panel">
+      <h2>Blocchi attivi per baia</h2>
+      <div class="table-wrap">
+        <table>
+          <thead><tr>
+            <th>Baia</th><th>Matricola</th><th>Modello</th>
+            <th>Situazione attuale</th><th>TQ/TE aperte</th><th>Blocco principale</th>
+          </tr></thead>
+          <tbody id="problemBody"></tbody>
+        </table>
+      </div>
+    </div>
+    <div class="panel">
+      <h3>Frequenza blocchi flotta</h3>
+      <div class="pf-list" id="pfList"></div>
+    </div>
+  </div>
+</div>
+
+<!-- TAB KPI -->
+<div class="tab-pane" id="tab-kpi">
+  <div id="kpiFull"></div>
+  <div class="two-col" style="margin-top:16px;">
+    <div class="chart-panel">
+      <h3>Occupazione baie — ultimi 7 giorni</h3>
+      <div class="chart-wrap"><canvas id="chartOcc7"></canvas></div>
+    </div>
+    <div class="chart-panel">
+      <h3>Movimenti in/out — ultimi 7 giorni</h3>
+      <div class="chart-wrap"><canvas id="chartMov"></canvas></div>
+    </div>
+  </div>
+  <div class="two-col">
+    <div class="chart-panel">
+      <h3>Sosta media effettiva vs prevista (ore)</h3>
+      <div class="chart-wrap"><canvas id="chartSosta"></canvas></div>
+    </div>
+    <div class="chart-panel">
+      <h3>Blocchi per tipologia</h3>
+      <div class="chart-wrap"><canvas id="chartBlocchi"></canvas></div>
+    </div>
+  </div>
+  <div class="panel" style="margin-top:16px;">
+    <h2>Registro movimenti</h2>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Data/Ora</th><th>Tipo</th><th>Baia</th><th>Matricola</th><th>Dettaglio</th></tr></thead>
+        <tbody id="movBody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- TAB FLOTTA -->
+<div class="tab-pane" id="tab-flotta">
+  <div class="panel">
+    <h2>Lista flotta — elicotteri manutenzione Colico</h2>
+    <div class="toolbar">
+      <button class="btn btn-success" id="btnAddHeli2">+ Aggiungi</button>
+      <input type="text" id="searchFleet" placeholder="Cerca matricola, MSN, modello..."
+        style="background:#0f172a;border:1px solid var(--border);color:#fff;
+          padding:9px 13px;border-radius:9px;font:inherit;min-width:260px;"/>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Matricola</th><th>MSN</th><th>Modello</th><th>Stato</th><th>In hangar</th><th>Azioni</th></tr></thead>
+        <tbody id="fleetBody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+</div><!-- /app -->
+
+<!-- DIALOG BAIA -->
+<dialog id="bayDlg">
+  <div class="mh">
+    <h2 id="bdTitle">Dettagli baia</h2>
+    <button class="close-x" onclick="document.getElementById('bayDlg').close()">✕</button>
+  </div>
+  <div class="mb" id="bdBody"></div>
+  <div class="mf">
+    <button class="btn btn-ghost" onclick="document.getElementById('bayDlg').close()">Chiudi</button>
+  </div>
+</dialog>
+
+<!-- DIALOG AGGIUNGI ELICOTTERO -->
+<dialog id="addDlg">
+  <div class="mh">
+    <h2>Aggiungi elicottero</h2>
+    <button class="close-x" onclick="document.getElementById('addDlg').close()">✕</button>
+  </div>
+  <div class="mb">
+    <div class="form-grid">
+      <div class="field"><label>Matricola</label><input id="addReg" placeholder="Es. I-TEST"/></div>
+      <div class="field"><label>MSN</label><input id="addMsn" placeholder="Es. 31999"/></div>
+      <div class="field"><label>Modello</label><select id="addModel"></select></div>
+      <div class="field"><label>Stato</label>
+        <select id="addStato">
+          <option>disponibile</option><option>in manutenzione</option>
+          <option>in attesa materiali</option><option>fuori servizio</option>
+        </select>
+      </div>
+    </div>
+  </div>
+  <div class="mf">
+    <button class="btn btn-ghost" onclick="document.getElementById('addDlg').close()">Annulla</button>
+    <button class="btn btn-success" id="saveAddBtn">Salva</button>
+  </div>
+</dialog>
+<script>
+// ============================================================
+// COSTANTI
+// ============================================================
+const SK = 'hangarPlanner_v5';
+
+const MODELS = ['AW139','AW169','AW109','H145','H145D3'];
+
+const BAY_NAMES = ['BAIA 1','BAIA 2','BAIA 3','BAIA 4','BAIA 5','BAIA 6','BAIA 7'];
+
+// Opzioni blocco principale — menu a tendina
+const BLOCCO_OPTIONS = [
+  { value:'',           label:'-- nessun blocco --',   cls:'prob-nessuno' },
+  { value:'forza',      label:'1 – Forza lavoro',       cls:'prob-forza'   },
+  { value:'materiali',  label:'2 – Materiali non a magazzino', cls:'prob-materiali' },
+  { value:'logistica',  label:'3 – Logistica',          cls:'prob-logistica'},
+  { value:'difetti',    label:'4 – Difetti superiori alla media', cls:'prob-difetti' }
+];
+
+// Flotta ufficiale con MSN e modello corretti
+const FLEET_MASTER = [
+  {matricola:'I-SRNT', msn:'31588', modello:'AW139'},
+  {matricola:'I-HECO', msn:'41510', modello:'AW139'},
+  {matricola:'I-TOMS', msn:'31728', modello:'AW139'},
+  {matricola:'I-ROAV', msn:'31739', modello:'AW139'},
+  {matricola:'I-LAQU', msn:'31752', modello:'AW139'},
+  {matricola:'I-TIKE', msn:'31776', modello:'AW139'},
+  {matricola:'I-VLTN', msn:'31778', modello:'AW139'},
+  {matricola:'I-RJAH', msn:'31780', modello:'AW139'},
+  {matricola:'I-MVRK', msn:'31870', modello:'AW139'},
+  {matricola:'C9-HMT', msn:'31619', modello:'AW139'},
+  {matricola:'C9-HMQ', msn:'31576', modello:'AW139'},
+  {matricola:'C9-HMU', msn:'31428', modello:'AW139'},
+  {matricola:'I-RELO', msn:'22179', modello:'AW109'},
+  {matricola:'I-BBPE', msn:'69012', modello:'AW169'},
+  {matricola:'I-BBFI', msn:'69016', modello:'AW169'},
+  {matricola:'I-KYRA', msn:'69045', modello:'AW169'},
+  {matricola:'I-LHCA', msn:'69058', modello:'AW169'},
+  {matricola:'I-KONA', msn:'69071', modello:'AW169'},
+  {matricola:'I-KLIO', msn:'69084', modello:'AW169'},
+  {matricola:'I-SMBA', msn:'69087', modello:'AW169'},
+  {matricola:'I-HERC', msn:'69060', modello:'AW169'},
+  {matricola:'I-PEBX', msn:'20003', modello:'H145'},
+  {matricola:'I-PEBZ', msn:'20009', modello:'H145'},
+  {matricola:'I-ZANL', msn:'20023', modello:'H145'},
+  {matricola:'I-CALA', msn:'20029', modello:'H145'},
+  {matricola:'I-BRXA', msn:'20034', modello:'H145'},
+  {matricola:'I-SUEM', msn:'20036', modello:'H145'},
+  {matricola:'I-LMBD', msn:'20038', modello:'H145'},
+  {matricola:'I-ANKO', msn:'20113', modello:'H145'},
+  {matricola:'I-HFRT', msn:'20114', modello:'H145'},
+  {matricola:'I-PTVR', msn:'20152', modello:'H145'},
+  {matricola:'I-BKUP', msn:'20158', modello:'H145'},
+  {matricola:'I-AHTD', msn:'20155', modello:'H145'},
+  {matricola:'I-SLND', msn:'20181', modello:'H145'},
+  {matricola:'I-SWRS', msn:'20283', modello:'H145'},
+  {matricola:'I-ATLS', msn:'21011', modello:'H145D3'},
+  {matricola:'I-PTAH', msn:'21119', modello:'H145D3'},
+  {matricola:'I-SETH', msn:'21133', modello:'H145D3'},
+  {matricola:'I-HBCR', msn:'21172', modello:'H145D3'},
+  {matricola:'I-ANUB', msn:'21174', modello:'H145D3'},
+  {matricola:'EI-HNH', msn:'21310', modello:'H145D3'},
+  {matricola:'I-HELS', msn:'21460', modello:'H145D3'},
+  {matricola:'I-HEBZ', msn:'21495', modello:'H145D3'}
+];
+
+// ============================================================
+// UTILITY
+// ============================================================
+const rid = () => 'x' + Math.random().toString(36).slice(2,9) + Date.now().toString(36);
+const addH = (d,h) => { const x=new Date(d); x.setHours(x.getHours()+h); return x; };
+const addD = (d,n) => { const x=new Date(d); x.setDate(x.getDate()+n); return x; };
+const fdt  = v => {
+  if(!v) return '--';
+  const d=new Date(v); if(isNaN(d)) return '--';
+  return d.toLocaleString('it-IT',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'});
+};
+const fDur = ms => {
+  if(!ms || ms<=0) return '0h';
+  const h = Math.floor(ms/3600000);
+  const g = Math.floor(h/24), hh = h%24;
+  return g>0 ? g+'g '+hh+'h' : hh+'h';
+};
+const toLDT = iso => {
+  if(!iso) return '';
+  const d=new Date(iso); if(isNaN(d)) return '';
+  const p=n=>String(n).padStart(2,'0');
+  return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate())+'T'+p(d.getHours())+':'+p(d.getMinutes());
+};
+const fromLDT = v => v ? new Date(v).toISOString() : '';
+const norm    = s => (s||'').toLowerCase().trim();
+const dayKey  = d => { const x=new Date(d); return x.getFullYear()+'-'+String(x.getMonth()+1).padStart(2,'0')+'-'+String(x.getDate()).padStart(2,'0'); };
+const msToH   = ms => ms>0 ? +(ms/3600000).toFixed(1) : 0;
+
+// ============================================================
+// DATI DEMO
+// ============================================================
+function mkFleet(){
+  return FLEET_MASTER.map(f => ({id:rid(), matricola:f.matricola, msn:f.msn, modello:f.modello, stato:'disponibile'}));
+}
+
+function mkBay(nome, stato, mat, mod, msn, ing, uP, uW, ingEff, uEff, wo, materiali, difetti, sit, blocco, dT, aL, tqte){
+  const toISO = d => d instanceof Date ? d.toISOString() : (d||'');
+  return {
+    id:nome, nome, stato,
+    matricola:mat||'', modello:mod||'', msn:msn||'',
+    // 4 date chiave
+    ingressoPrevisto:toISO(ing),
+    ingressoEffettivo:toISO(ingEff),
+    uscitaPrevista:toISO(uP),
+    uscitaEffettiva:toISO(uEff),
+    uscitaWOIniziale:toISO(uW),
+    wo:wo||'',
+    materiali:materiali||'', difetti:difetti||'',
+    situazioneAttuale:sit||'',
+    bloccoSelezionato:blocco||'',  // valore dal menu a tendina
+    dipendenzeTecniche:!!dT, attesaLogistica:!!aL,
+    tqte:tqte||[], note:''
+  };
+}
+
+function demoBays(){
+  const n=new Date();
+  return [
+    mkBay('BAIA 1','occupata','I-SRNT','AW139','31588',
+      addH(n,-54),addH(n,-6),addH(n,-12),addH(n,-54),'',
+      'WO 12345','kit idraulico non a magazzino','fuel indication intermittent ATA28',
+      'Attesa kit idraulico. Task ATA28 in corso. Materiale in ordine.',
+      'materiali',true,false,
+      [{id:rid(),tipo:'TQ',numero:'TQ-2024-0482',titolo:'Fuel indication intermittent ATA28',stato:'aperta',priorita:'alta',data:'2024-03-01'},
+       {id:rid(),tipo:'TE',numero:'TE-2024-1104',titolo:'Attesa kit idraulico braccio SX',stato:'aperta',priorita:'media',data:'2024-03-10'}]),
+
+    mkBay('BAIA 2','occupata','I-HECO','AW139','41510',
+      addH(n,-20),addH(n,10),addH(n,6),addH(n,-20),'',
+      'WO 12346','ok','nessun difetto critico','Lavori in corso. ETA uscita rispettata.',
+      '',false,false,[]),
+
+    mkBay('BAIA 3','prenotata','I-TOMS','AW139','31728',
+      addH(n,5),addH(n,32),addH(n,28),null,'',
+      'WO 12347','consumabili filtro olio in transito','difetti minori','Ingresso pianificato domani.',
+      'logistica',false,true,
+      [{id:rid(),tipo:'TQ',numero:'TQ-2024-0390',titolo:'Consumabili filtro olio',stato:'in lavorazione',priorita:'bassa',data:'2024-02-20'}]),
+
+    mkBay('BAIA 4','libera','','','',null,null,null,null,'','','','','','',false,false,[]),
+
+    mkBay('BAIA 5','in attesa','C9-HMT','AW139','31619',
+      addH(n,-3),addH(n,40),addH(n,36),addH(n,-3),'',
+      'WO 12348','ok','attesa ispezione supplementare',
+      'Fermo per risposta documentale. Ispezione supplementare richiesta.',
+      'logistica',false,true,
+      [{id:rid(),tipo:'TE',numero:'TE-2024-2210',titolo:'Ispezione supplementare',stato:'aperta',priorita:'alta',data:'2024-03-12'}]),
+
+    mkBay('BAIA 6','occupata','I-ROAV','AW139','31739',
+      addH(n,-100),addH(n,-30),addH(n,-40),addH(n,-100),'',
+      'WO 12349','ok','difetti superiori alla media — gearbox task concatenati',
+      'Ritardo per task gearbox. Task B dipende da A non concluso.',
+      'difetti',true,false,
+      [{id:rid(),tipo:'TQ',numero:'TQ-2024-0501',titolo:'Gearbox task B dipendente da A',stato:'aperta',priorita:'alta',data:'2024-03-05'}]),
+
+    mkBay('BAIA 7','libera','','','',null,null,null,null,'','','','','','',false,false,[])
+  ];
+}
+
+function demoMov(){
+  const n=new Date();
+  return [
+    {id:rid(),timestamp:addD(n,-6).toISOString(),tipo:'IN',baia:'BAIA 1',matricola:'I-SRNT',dettaglio:'Ingresso WO 12345'},
+    {id:rid(),timestamp:addD(n,-6).toISOString(),tipo:'IN',baia:'BAIA 6',matricola:'I-ROAV',dettaglio:'Ingresso task gearbox'},
+    {id:rid(),timestamp:addD(n,-5).toISOString(),tipo:'IN',baia:'BAIA 2',matricola:'I-HECO',dettaglio:'Ingresso WO 12346'},
+    {id:rid(),timestamp:addD(n,-4).toISOString(),tipo:'OUT',baia:'BAIA 7',matricola:'I-KYRA',dettaglio:'Rilascio'},
+    {id:rid(),timestamp:addD(n,-3).toISOString(),tipo:'OUT',baia:'BAIA 3',matricola:'I-BBFI',dettaglio:'Uscita completamento'},
+    {id:rid(),timestamp:addD(n,-2).toISOString(),tipo:'IN',baia:'BAIA 5',matricola:'C9-HMT',dettaglio:'Ingresso attesa documentale'},
+    {id:rid(),timestamp:addD(n,-1).toISOString(),tipo:'BOOK',baia:'BAIA 3',matricola:'I-TOMS',dettaglio:'Prenotazione'}
+  ];
+}
+
+function demoHist(){
+  const data={}, n=new Date();
+  for(let i=364;i>=0;i--){
+    const k=dayKey(addD(n,-i));
+    data[k]=Math.min(7,Math.max(1,3+Math.round(2*Math.sin(i/30)+Math.random()*2)));
+  }
+  return data;
+}
+
+function defaultData(){
+  return {fleet:mkFleet(), bays:demoBays(), movements:demoMov(), historicalOccupancy:demoHist()};
+}
+
+// ============================================================
+// STATO GLOBALE — carica da JSON remoto (GitHub Pages)
+// ============================================================
+const JSON_URL = 'hangar_data.json';
+
+let A = {};
+let CH = {};
+
+async function initApp() {
+  try {
+    const res = await fetch(JSON_URL + '?t=' + Date.now());
+    if (!res.ok) throw new Error('Fetch fallito');
+    const data = await res.json();
+    if (data && data.fleet && data.bays) {
+      A = data;
+      localStorage.setItem(SK, JSON.stringify(A));
+    } else {
+      throw new Error('Struttura JSON non valida');
+    }
+  } catch(e) {
+    console.warn('JSON remoto non disponibile, uso localStorage:', e);
+    try {
+      const r = localStorage.getItem(SK);
+      if (r) { const p = JSON.parse(r); if (p && p.fleet && p.bays) A = p; }
+    } catch(e2) {}
+    if (!A.fleet) { A = defaultData(); localStorage.setItem(SK, JSON.stringify(A)); }
+  }
+  renderAll();
+  startAutoRefresh();
+}
+
+function startAutoRefresh() {
+  setInterval(async () => {
+    try {
+      const res = await fetch(JSON_URL + '?t=' + Date.now());
+      if (!res.ok) return;
+      const data = await res.json();
+      if (data && data.fleet && data.bays) {
+        A = data;
+        localStorage.setItem(SK, JSON.stringify(A));
+        renderAll();
+      }
+    } catch(e) {}
+  }, 5 * 60 * 1000);
+}
+
+function save(){
+  if(!A.historicalOccupancy) A.historicalOccupancy={};
+  A.historicalOccupancy[dayKey(new Date())] = A.bays.filter(b=>b.stato!=='libera').length;
+  localStorage.setItem(SK, JSON.stringify(A));
+}
+
+// ============================================================
+// BLOCCO PRINCIPALE — logica
+// ============================================================
+function getBloccoInfo(b){
+  // Prima usa il valore scelto manualmente
+  const sel = b.bloccoSelezionato || '';
+  const found = BLOCCO_OPTIONS.find(o=>o.value===sel);
+  if(found && found.value !== '') return found;
+  return BLOCCO_OPTIONS[0]; // nessun blocco
+}
+
+function getLast7(){
+  const r=[],n=new Date();
+  for(let i=6;i>=0;i--){
+    const d=addD(n,-i);
+    const s=new Date(d.getFullYear(),d.getMonth(),d.getDate(),0,0,0);
+    const e=new Date(d.getFullYear(),d.getMonth(),d.getDate(),23,59,59,999);
+    r.push({label:s.toLocaleDateString('it-IT',{day:'2-digit',month:'2-digit'}),start:s,end:e});
+  }
+  return r;
+}
+
+function avgOcc(n){
+  const h=A.historicalOccupancy||{},now=new Date();
+  let sum=0,cnt=0;
+  for(let i=0;i<n;i++){const k=dayKey(addD(now,-i));if(h[k]!==undefined){sum+=h[k];cnt++;}}
+  return cnt?(sum/cnt).toFixed(1):'--';
+}
+
+// KPI calcolati dalle 4 date
+function computeKpi(){
+  const total=7;
+  const occ=A.bays.filter(b=>b.stato==='occupata').length;
+  const free=A.bays.filter(b=>b.stato==='libera').length;
+  const wait=A.bays.filter(b=>b.stato==='prenotata'||b.stato==='in attesa').length;
+  const now=new Date();
+
+  // Ritardi: uscita prevista superata senza uscita effettiva
+  const late=A.bays.filter(b=>b.uscitaPrevista&&b.stato!=='libera'&&now>new Date(b.uscitaPrevista)&&!b.uscitaEffettiva).length;
+
+  // Sosta media prevista vs effettiva (ore) — solo baie con entrambe le date
+  const closed=A.bays.filter(b=>b.ingressoEffettivo&&b.uscitaEffettiva);
+  const avgSostaEff = closed.length
+    ? (closed.reduce((s,b)=>s+msToH(new Date(b.uscitaEffettiva)-new Date(b.ingressoEffettivo)),0)/closed.length).toFixed(1)
+    : '--';
+  const avgSostaPrev = closed.length
+    ? (closed.reduce((s,b)=>{
+        const ip=b.ingressoPrevisto||b.ingressoEffettivo;
+        return s+msToH(new Date(b.uscitaPrevista)-new Date(ip));
+      },0)/closed.length).toFixed(1)
+    : '--';
+
+  const d7=getLast7();
+  const mov7=A.movements.filter(m=>{const t=new Date(m.timestamp).getTime();return t>=d7[0].start.getTime()&&t<=d7[6].end.getTime();}).length;
+  const occ7=d7.map(d=>(A.historicalOccupancy||{})[dayKey(d.start)]??occ);
+  const avg7=(occ7.reduce((a,b)=>a+b,0)/occ7.length).toFixed(1);
+  const tqOpen=A.bays.reduce((s,b)=>s+(b.tqte||[]).filter(t=>t.stato==='aperta').length,0);
+  const blocchiAttivi=A.bays.filter(b=>b.bloccoSelezionato&&b.bloccoSelezionato!=='').length;
+
+  return {total,occ,free,wait,pct:((occ/total)*100).toFixed(1),
+    latePct:((late/total)*100).toFixed(1),late,mov7,avg7,
+    avg3m:avgOcc(90),avg6m:avgOcc(180),avg12m:avgOcc(365),
+    avgSostaEff,avgSostaPrev,tqOpen,blocchiAttivi};
+}
+
+// ============================================================
+// MOVIMENTI
+// ============================================================
+function mkMv(dt,tipo,baia,mat,det){
+  return {id:rid(),timestamp:dt.toISOString(),tipo,baia,matricola:mat,dettaglio:det};
+}
+function regMov(ob,nb){
+  const oldOcc=ob.stato!=='libera'&&ob.matricola, newOcc=nb.stato!=='libera'&&nb.matricola;
+  if(!oldOcc&&newOcc) A.movements.unshift(mkMv(new Date(),'IN',nb.nome,nb.matricola,'Assegnazione '+(nb.wo||'')));
+  else if(oldOcc&&!newOcc) A.movements.unshift(mkMv(new Date(),'OUT',ob.nome,ob.matricola,'Baia liberata'));
+  else if(nb.stato==='prenotata'&&ob.stato!=='prenotata') A.movements.unshift(mkMv(new Date(),'BOOK',nb.nome,nb.matricola||'--','Prenotazione'));
+}
+function clearBay(b){
+  Object.assign(b,{stato:'libera',matricola:'',modello:'',msn:'',
+    ingressoPrevisto:'',ingressoEffettivo:'',uscitaPrevista:'',uscitaEffettiva:'',uscitaWOIniziale:'',
+    wo:'',materiali:'',difetti:'',situazioneAttuale:'',bloccoSelezionato:'',
+    dipendenzeTecniche:false,attesaLogistica:false,tqte:[],note:''});
+}
+</script>
+<script>
+// ============================================================
+// KPI TOP
+// ============================================================
+function renderKpiTop(){
+  const k=computeKpi();
+  document.getElementById('kpiTop').innerHTML=
+    '<div class="kpi-grid" style="margin-bottom:18px;">'+
+    kCard('green','Baie libere',k.free,'di '+k.total+' totali')+
+    kCard('red','Baie occupate',k.occ,k.pct+'% occupazione')+
+    kCard('yellow','In attesa / pren.',k.wait,'')+
+    kCard('orange','In ritardo',k.late,k.latePct+'% baie')+
+    kCard('rose','Blocchi attivi',k.blocchiAttivi,'da menu selezione')+
+    kCard('cyan','TQ/TE aperte',k.tqOpen,'')+
+    '</div>';
+}
+
+function renderKpiFull(){
+  const k=computeKpi();
+  document.getElementById('kpiFull').innerHTML=
+    '<div class="kpi-group-title">Stato baie</div>'+
+    '<div class="kpi-grid">'+
+    kCard('','Totali',k.total,'')+kCard('green','Libere',k.free,'')+
+    kCard('red','Occupate',k.occ,'')+kCard('yellow','In attesa/pren.',k.wait,'')+
+    kCard('orange','% Occupazione',k.pct+'%','')+kCard('red','% In ritardo',k.latePct+'%',k.late+' baie')+
+    '</div>'+
+    '<div class="kpi-group-title">Sosta media (dalle 4 date)</div>'+
+    '<div class="kpi-grid">'+
+    kCard('blue','Sosta prev. media',k.avgSostaPrev+'h','ore medie previste')+
+    kCard('purple','Sosta eff. media',k.avgSostaEff+'h','ore medie effettive')+
+    kCard('cyan','Mov. 7 giorni',k.mov7,'')+kCard('orange','Blocchi attivi',k.blocchiAttivi,'')+
+    '</div>'+
+    '<div class="kpi-group-title">Occupazione storica</div>'+
+    '<div class="kpi-grid">'+
+    kCard('cyan','Media 7 gg',k.avg7,'baie/giorno')+
+    kCard('purple','Media 3 mesi',k.avg3m,'90 gg')+
+    kCard('purple','Media 6 mesi',k.avg6m,'180 gg')+
+    kCard('purple','Media 12 mesi',k.avg12m,'365 gg')+
+    '</div>';
+}
+
+function kCard(cls,lbl,val,sub){
+  return '<div class="kpi-card '+cls+'">'+
+    '<div class="kpi-label">'+lbl+'</div>'+
+    '<div class="kpi-value">'+val+'</div>'+
+    (sub?'<div class="kpi-sub">'+sub+'</div>':'')+
+    '</div>';
+}
+
+// ============================================================
+// RENDER 7 BAIE
+// ============================================================
+function renderBays(){
+  const g=document.getElementById('bayGrid'); g.innerHTML='';
+  A.bays.forEach(b=>{
+    const pr=getBloccoInfo(b);
+    const cls=b.stato==='libera'?'bay-free':b.stato==='occupata'?'bay-occupied':'bay-waiting';
+    const tOpen=(b.tqte||[]).filter(t=>t.stato==='aperta');
+    const div=document.createElement('div');
+    div.className='bay-card '+cls;
+    div.innerHTML=
+      '<div class="bay-title">'+b.nome+'</div>'+
+      '<div class="bay-pill">'+b.stato+'</div>'+
+      '<div class="bay-line"><strong>Matr.</strong> '+(b.matricola||'--')+' <strong style="margin-left:6px;">MSN</strong> '+(b.msn||'--')+'</div>'+
+      '<div class="bay-line"><strong>Modello</strong> '+(b.modello||'--')+'</div>'+
+      '<div class="bay-line"><strong>WO</strong> '+(b.wo||'--')+'</div>'+
+      '<div class="bay-line"><strong>Ingr. prev.</strong> '+fdt(b.ingressoPrevisto)+'</div>'+
+      '<div class="bay-line"><strong>Ingr. eff.</strong> '+fdt(b.ingressoEffettivo)+'</div>'+
+      '<div class="bay-line"><strong>Usc. prev.</strong> '+fdt(b.uscitaPrevista)+'</div>'+
+      '<div class="bay-line"><strong>Usc. eff.</strong> '+fdt(b.uscitaEffettiva)+'</div>'+
+      (b.situazioneAttuale?'<div class="bay-sit">'+b.situazioneAttuale.slice(0,100)+(b.situazioneAttuale.length>100?'…':'')+'</div>':'')+
+      '<div class="bay-badge '+pr.cls+'">'+(pr.value?pr.label:'nessun blocco')+'</div>'+
+      (tOpen.length?'<div class="bay-tqte">'+tOpen.map(t=>t.numero||t.tipo).join(' | ')+'</div>':'');
+    div.addEventListener('click',()=>openBayDlg(b.id));
+    g.appendChild(div);
+  });
+}
+
+// ============================================================
+// QUICK BAR
+// ============================================================
+function populateQuickBar(){
+  document.getElementById('qBaia').innerHTML=BAY_NAMES.map(n=>'<option>'+n+'</option>').join('');
+  document.getElementById('qMatricola').innerHTML=
+    '<option value="">-- seleziona --</option>'+
+    A.fleet.sort((a,b)=>a.matricola.localeCompare(b.matricola))
+      .map(h=>'<option value="'+h.matricola+'">'+h.matricola+' – '+h.modello+' ('+h.msn+')</option>').join('');
+}
+
+document.getElementById('qSave').addEventListener('click',()=>{
+  const bayName=document.getElementById('qBaia').value;
+  const mat=document.getElementById('qMatricola').value.trim();
+  const wo=document.getElementById('qWO').value.trim();
+  const usc=document.getElementById('qUscita').value;
+  const stato=document.getElementById('qStato').value;
+  if(!mat){alert('Seleziona un elicottero.');return;}
+  const b=A.bays.find(x=>x.id===bayName);
+  if(!b){return;}
+  const h=A.fleet.find(x=>x.matricola===mat);
+  const ob=Object.assign({},b);
+  b.stato=stato; b.matricola=mat;
+  b.modello=h?h.modello:''; b.msn=h?h.msn:'';
+  if(wo) b.wo=wo;
+  if(!b.ingressoEffettivo) b.ingressoEffettivo=new Date().toISOString();
+  if(!b.ingressoPrevisto) b.ingressoPrevisto=new Date().toISOString();
+  if(usc){ b.uscitaPrevista=fromLDT(usc); if(!b.uscitaWOIniziale) b.uscitaWOIniziale=fromLDT(usc); }
+  regMov(ob,b); save(); renderAll();
+  document.getElementById('qWO').value='';
+  document.getElementById('qUscita').value='';
+  alert(mat+' assegnato a '+bayName+'.');
+});
+
+// ============================================================
+// DIALOG BAIA DETTAGLI
+// ============================================================
+function tqteHtml(t){
+  return '<div class="tqte-row" id="tr-'+t.id+'">'+
+    '<div class="field"><label>Tipo</label><select class="tq-tipo" data-id="'+t.id+'">'+
+      ['TQ','TE'].map(x=>'<option '+(t.tipo===x?'selected':'')+'>'+x+'</option>').join('')+'</select></div>'+
+    '<div class="field"><label>Prior.</label><select class="tq-prior" data-id="'+t.id+'">'+
+      ['alta','media','bassa'].map(x=>'<option '+(t.priorita===x?'selected':'')+'>'+x+'</option>').join('')+'</select></div>'+
+    '<div class="field"><label>Numero</label><input class="tq-num" data-id="'+t.id+'" value="'+(t.numero||'')+'" placeholder="TQ-2024-0482"/></div>'+
+    '<div class="field" style="grid-column:span 2;"><label>Titolo</label><input class="tq-tit" data-id="'+t.id+'" value="'+(t.titolo||'')+'" placeholder="Descrizione"/></div>'+
+    '<div class="field"><label>Stato</label><select class="tq-stato" data-id="'+t.id+'">'+
+      ['aperta','in lavorazione','chiusa'].map(x=>'<option '+(t.stato===x?'selected':'')+'>'+x+'</option>').join('')+'</select></div>'+
+    '<div class="field"><label>Data</label><input type="date" class="tq-data" data-id="'+t.id+'" value="'+(t.data||'')+'"/></div>'+
+    '<button class="btn btn-danger btn-sm tq-del" data-id="'+t.id+'" style="align-self:end;">✕</button>'+
+    '</div>';
+}
+function readTqte(){
+  return Array.from(document.querySelectorAll('.tqte-row')).map(row=>{
+    const id=row.id.replace('tr-','');
+    return {id,tipo:row.querySelector('.tq-tipo').value,
+      numero:row.querySelector('.tq-num').value.trim(),
+      titolo:row.querySelector('.tq-tit').value.trim(),
+      stato:row.querySelector('.tq-stato').value,
+      priorita:row.querySelector('.tq-prior').value,
+      data:row.querySelector('.tq-data').value};
+  });
+}
+document.addEventListener('click',e=>{
+  if(e.target.classList.contains('tq-del'))
+    document.getElementById('tr-'+e.target.dataset.id).remove();
+});
+
+function openBayDlg(bayId){
+  const b=A.bays.find(x=>x.id===bayId);
+  const pr=getBloccoInfo(b);
+  document.getElementById('bdTitle').textContent=b.nome+' – Dettagli e modifica';
+  const heliOpts=A.fleet.sort((a,z)=>a.matricola.localeCompare(z.matricola))
+    .map(h=>'<option value="'+h.matricola+'" '+(b.matricola===h.matricola?'selected':'')+'>'+
+      h.matricola+' – '+h.modello+' (MSN '+h.msn+')</option>').join('');
+
+  const bloccoSelectHtml=
+    '<select id="eBlocco" style="width:100%;background:#1a0a0a;border:2px solid #dc2626;'+
+    'border-radius:8px;padding:12px 14px;color:#fff;font:inherit;font-size:15px;font-weight:700;">'+
+    BLOCCO_OPTIONS.map(o=>'<option value="'+o.value+'" '+(b.bloccoSelezionato===o.value?'selected':'')+'>'+o.label+'</option>').join('')+
+    '</select>';
+
+  document.getElementById('bdBody').innerHTML=
+    '<div class="sect">Dati operativi</div>'+
+    '<div class="form-grid">'+
+    '<div class="field"><label>Stato baia</label><select id="eStato">'+
+      ['libera','occupata','prenotata','in attesa'].map(s=>'<option '+(b.stato===s?'selected':'')+'>'+s+'</option>').join('')+'</select></div>'+
+    '<div class="field"><label>Elicottero</label><select id="eMat"><option value="">-- seleziona --</option>'+heliOpts+'</select></div>'+
+    '<div class="field"><label>Modello</label><input id="eMod" value="'+(b.modello||'')+'" readonly style="opacity:.6;cursor:not-allowed;"/></div>'+
+    '<div class="field"><label>MSN</label><input id="eMsn" value="'+(b.msn||'')+'" readonly style="opacity:.6;cursor:not-allowed;"/></div>'+
+    '<div class="field"><label>WO</label><input id="eWO" value="'+(b.wo||'')+'" placeholder="WO 12345"/></div>'+
+    '<div class="field"><label>Note</label><input id="eNote" value="'+(b.note||'')+'"/></div>'+
+    '</div>'+
+
+    // 4 DATE — raggruppate visivamente
+    '<div class="sect">4 Date chiave della sosta</div>'+
+    '<div class="date-group">'+
+    '<div class="date-card green-border">'+
+    '<div class="date-card-title">Ingresso</div>'+
+    '<div class="field"><label>Previsto</label><input type="datetime-local" id="eIngPrev" value="'+toLDT(b.ingressoPrevisto)+'"/></div>'+
+    '<div class="field" style="margin-top:8px;"><label>Effettivo</label><input type="datetime-local" id="eIngEff" value="'+toLDT(b.ingressoEffettivo)+'"/></div>'+
+    '</div>'+
+    '<div class="date-card red-border">'+
+    '<div class="date-card-title">Uscita</div>'+
+    '<div class="field"><label>Prevista</label><input type="datetime-local" id="eUscPrev" value="'+toLDT(b.uscitaPrevista)+'"/></div>'+
+    '<div class="field" style="margin-top:8px;"><label>Effettiva</label><input type="datetime-local" id="eUscEff" value="'+toLDT(b.uscitaEffettiva)+'"/></div>'+
+    '</div>'+
+    '</div>'+
+    '<div class="field" style="margin-top:10px;"><label>Uscita da WO iniziale (riferimento)</label>'+
+    '<input type="datetime-local" id="eUscWO" value="'+toLDT(b.uscitaWOIniziale)+'"/></div>'+
+
+    // BLOCCO PRINCIPALE — menu grande e visibile
+    '<div class="sect">Blocco principale che ferma la manutenzione</div>'+
+    '<div class="blocco-select-wrap"><label>Seleziona il motivo del blocco</label>'+bloccoSelectHtml+'</div>'+
+
+    // SITUAZIONE
+    '<div class="sect">Situazione attuale elicottero</div>'+
+    '<div class="field"><label>Descrizione libera — stato lavori, blocchi, aggiornamenti</label>'+
+    '<textarea id="eSit" style="min-height:85px;">'+(b.situazioneAttuale||'')+'</textarea></div>'+
+
+    // MATERIALI E DIFETTI
+    '<div class="sect">Materiali e difetti</div>'+
+    '<div class="form-grid" style="grid-template-columns:1fr 1fr;">'+
+    '<div class="field"><label>Materiali</label><textarea id="eMat2">'+(b.materiali||'')+'</textarea></div>'+
+    '<div class="field"><label>Difetti aperti</label><textarea id="eDif">'+(b.difetti||'')+'</textarea></div>'+
+    '</div>'+
+
+    // TQ / TE
+    '<div class="sect">TQ / TE aperte</div>'+
+    '<div id="tqCont">'+((b.tqte&&b.tqte.length)?b.tqte.map(tqteHtml).join(''):
+      '<div style="color:var(--muted);font-size:13px;margin-bottom:8px;">Nessuna TQ/TE registrata.</div>')+'</div>'+
+    '<button class="btn btn-warn" style="margin-top:6px;" id="addTqBtn">+ Aggiungi TQ/TE</button>'+
+
+    // AZIONI
+    '<div style="display:flex;gap:10px;margin-top:20px;flex-wrap:wrap;">'+
+    '<button class="btn btn-success" id="saveBayBtn">Salva modifiche</button>'+
+    '<button class="btn btn-danger" id="clearBayBtn">Libera baia</button>'+
+    '</div>';
+
+  // Autocompila modello e MSN quando si cambia elicottero
+  document.getElementById('eMat').addEventListener('change',function(){
+    const h=A.fleet.find(x=>x.matricola===this.value);
+    if(h){ document.getElementById('eMod').value=h.modello||''; document.getElementById('eMsn').value=h.msn||''; }
+  });
+
+  document.getElementById('addTqBtn').addEventListener('click',()=>{
+    const nr={id:rid(),tipo:'TQ',numero:'',titolo:'',stato:'aperta',priorita:'media',data:''};
+    document.getElementById('tqCont').insertAdjacentHTML('beforeend',tqteHtml(nr));
+  });
+
+  document.getElementById('saveBayBtn').addEventListener('click',()=>{
+    const ob=Object.assign({},b);
+    b.stato=document.getElementById('eStato').value;
+    b.matricola=document.getElementById('eMat').value.trim();
+    b.modello=document.getElementById('eMod').value.trim();
+    b.msn=document.getElementById('eMsn').value.trim();
+    b.wo=document.getElementById('eWO').value.trim();
+    b.note=document.getElementById('eNote').value.trim();
+    // 4 date
+    b.ingressoPrevisto=fromLDT(document.getElementById('eIngPrev').value);
+    b.ingressoEffettivo=fromLDT(document.getElementById('eIngEff').value);
+    b.uscitaPrevista=fromLDT(document.getElementById('eUscPrev').value);
+    b.uscitaEffettiva=fromLDT(document.getElementById('eUscEff').value);
+    b.uscitaWOIniziale=fromLDT(document.getElementById('eUscWO').value);
+    // blocco
+    b.bloccoSelezionato=document.getElementById('eBlocco').value;
+    b.situazioneAttuale=document.getElementById('eSit').value.trim();
+    b.materiali=document.getElementById('eMat2').value.trim();
+    b.difetti=document.getElementById('eDif').value.trim();
+    b.tqte=readTqte();
+    if(b.stato==='libera') clearBay(b);
+    regMov(ob,b); save(); renderAll();
+    document.getElementById('bayDlg').close();
+  });
+
+  document.getElementById('clearBayBtn').addEventListener('click',()=>{
+    if(!confirm('Liberare '+b.nome+'?')) return;
+    const ob=Object.assign({},b); clearBay(b); regMov(ob,b); save(); renderAll();
+    document.getElementById('bayDlg').close();
+  });
+
+  document.getElementById('bayDlg').showModal();
+}
+
+// ============================================================
+// RENDER RITARDI
+// ============================================================
+function renderDelay(){
+  const now=new Date();
+  document.getElementById('delayBody').innerHTML=
+    A.bays.filter(b=>b.stato!=='libera'&&b.matricola).map(b=>{
+      const uPrev=b.uscitaPrevista?new Date(b.uscitaPrevista):null;
+      const uEff=b.uscitaEffettiva?new Date(b.uscitaEffettiva):null;
+      const iEff=b.ingressoEffettivo?new Date(b.ingressoEffettivo):null;
+      const iPrev=b.ingressoPrevisto?new Date(b.ingressoPrevisto):null;
+      const ref=uEff||now;
+      const dvp=uPrev?Math.max(0,ref-uPrev):0;
+      const sostaPrevMs=(uPrev&&iPrev)?uPrev-iPrev:0;
+      const sostaEffMs=(uEff&&iEff)?uEff-iEff:(iEff?now-iEff:0);
+      const deltaMs=sostaEffMs-sostaPrevMs;
+      let st='on time',pc='pill-ok';
+      if(dvp>86400000){st='alto ritardo';pc='pill-highlate';}
+      else if(dvp>0){st='in ritardo';pc='pill-late';}
+      return '<tr>'+
+        '<td>'+b.nome+'</td><td>'+b.matricola+'</td><td>'+(b.modello||'--')+'</td><td>'+(b.msn||'--')+'</td>'+
+        '<td>'+fdt(b.ingressoPrevisto)+'</td><td>'+fdt(b.ingressoEffettivo)+'</td>'+
+        '<td>'+fdt(b.uscitaPrevista)+'</td><td>'+fdt(b.uscitaEffettiva)+'</td>'+
+        '<td>'+(sostaPrevMs>0?msToH(sostaPrevMs)+'h':'--')+'</td>'+
+        '<td>'+(sostaEffMs>0?msToH(sostaEffMs)+'h':'--')+'</td>'+
+        '<td style="color:'+(deltaMs>0?'#fca5a5':deltaMs<0?'#86efac':'#94a3b8')+'">'+
+          (deltaMs!==0?(deltaMs>0?'+':'')+msToH(deltaMs)+'h':'--')+'</td>'+
+        '<td><span class="pill '+pc+'">'+st+'</span></td></tr>';
+    }).join('')||'<tr><td colspan="12" style="color:var(--muted);">Nessun elicottero in hangar.</td></tr>';
+}
+
+// ============================================================
+// RENDER PROBLEMI
+// ============================================================
+function renderProblems(){
+  const active=A.bays.filter(b=>b.stato!=='libera'&&b.matricola);
+  const freq={};
+  document.getElementById('problemBody').innerHTML=active.map(b=>{
+    const pr=getBloccoInfo(b);
+    if(pr.value) freq[pr.label]=(freq[pr.label]||0)+1;
+    const tOpen=(b.tqte||[]).filter(t=>t.stato==='aperta');
+    return '<tr>'+
+      '<td>'+b.nome+'</td><td>'+b.matricola+'</td><td>'+(b.modello||'--')+'</td>'+
+      '<td style="max-width:200px;white-space:normal;">'+(b.situazioneAttuale||'<span style="color:var(--muted);">--</span>')+'</td>'+
+      '<td>'+(tOpen.length?tOpen.map(t=>'<span class="pill pill-open">'+t.tipo+' '+t.numero+'</span>').join(' '):'--')+'</td>'+
+      '<td><span class="pill '+pr.cls+'">'+(pr.value?pr.label:'nessun blocco')+'</span></td></tr>';
+  }).join('')||'<tr><td colspan="6" style="color:var(--muted);">Nessun elicottero in hangar.</td></tr>';
+
+  document.getElementById('pfList').innerHTML=Object.entries(freq).sort((a,b)=>b[1]-a[1])
+    .map(([n,c])=>'<div class="pf-row"><span>'+n+'</span><span class="pf-count">'+c+'</span></div>').join('')||
+    '<div style="color:var(--muted);">Nessun blocco attivo.</div>';
+}
+
+// ============================================================
+// RENDER FLOTTA
+// ============================================================
+function renderFleet(){
+  const q=norm(document.getElementById('searchFleet').value);
+  document.getElementById('fleetBody').innerHTML=
+    A.fleet.filter(h=>[h.matricola,h.msn,h.modello,h.stato].some(v=>norm(v).includes(q)))
+    .sort((a,b)=>a.matricola.localeCompare(b.matricola))
+    .map(h=>{
+      const inBay=A.bays.find(b=>b.matricola===h.matricola&&b.stato!=='libera');
+      return '<tr>'+
+        '<td>'+h.matricola+'</td>'+
+        '<td>'+h.msn+'</td>'+
+        '<td><select class="fm" data-id="'+h.id+'">'+MODELS.map(m=>'<option '+(h.modello===m?'selected':'')+'>'+m+'</option>').join('')+'</select></td>'+
+        '<td><select class="fs" data-id="'+h.id+'">'+
+          ['disponibile','in manutenzione','in attesa materiali','fuori servizio']
+          .map(s=>'<option '+(h.stato===s?'selected':'')+'>'+s+'</option>').join('')+'</select></td>'+
+        '<td>'+(inBay?'<span class="pill pill-open">'+inBay.nome+'</span>':'--')+'</td>'+
+        '<td><button class="btn btn-danger btn-sm fd" data-id="'+h.id+'">Rimuovi</button></td></tr>';
+    }).join('');
+
+  document.querySelectorAll('.fm').forEach(el=>el.addEventListener('change',function(){
+    const h=A.fleet.find(x=>x.id===this.dataset.id);
+    if(h){ h.modello=this.value; A.bays.forEach(b=>{if(b.matricola===h.matricola)b.modello=h.modello;}); save(); renderAll(); }
+  }));
+  document.querySelectorAll('.fs').forEach(el=>el.addEventListener('change',function(){
+    const h=A.fleet.find(x=>x.id===this.dataset.id); if(h){ h.stato=this.value; save(); }
+  }));
+  document.querySelectorAll('.fd').forEach(btn=>btn.addEventListener('click',function(){
+    const h=A.fleet.find(x=>x.id===this.dataset.id);
+    const inBay=A.bays.find(b=>b.matricola===h.matricola&&b.stato!=='libera');
+    if(!confirm(inBay?h.matricola+' è in hangar ('+inBay.nome+'). Rimuovere dalla lista?':'Rimuovere '+h.matricola+'?')) return;
+    if(inBay){ clearBay(inBay); A.movements.unshift(mkMv(new Date(),'OUT',inBay.nome,h.matricola,'Rimosso da flotta')); }
+    A.fleet=A.fleet.filter(x=>x.id!==h.id); save(); renderAll();
+  }));
+}
+
+// ============================================================
+// RENDER MOVIMENTI
+// ============================================================
+function renderMov(){
+  document.getElementById('movBody').innerHTML=
+    [...A.movements].sort((a,b)=>new Date(b.timestamp)-new Date(a.timestamp)).slice(0,60)
+    .map(m=>'<tr><td>'+fdt(m.timestamp)+'</td><td>'+m.tipo+'</td><td>'+m.baia+'</td><td>'+m.matricola+'</td><td>'+m.dettaglio+'</td></tr>').join('');
+}
+
+// ============================================================
+// GRAFICI
+// ============================================================
+function dch(n){ if(CH[n]){ CH[n].destroy(); delete CH[n]; } }
+
+function CO(yLbl){
+  return {
+    responsive:true, maintainAspectRatio:false,
+    plugins:{legend:{labels:{color:'#475569',font:{size:12}}}},
+    scales:{
+      x:{ticks:{color:'#475569',font:{size:11}},grid:{color:'rgba(0,0,0,.08)'},title:{display:true,text:'Giorno',color:'#475569'}},
+      y:{beginAtZero:true,ticks:{color:'#475569',font:{size:11}},grid:{color:'rgba(0,0,0,.08)'},title:{display:true,text:yLbl,color:'#475569'}}
+    }
+  };
+}
+
+function renderCharts(){
+  const d7=getLast7(), lb=d7.map(x=>x.label);
+
+  // Ritardi per giorno
+  const dc=d7.map(day=>A.bays.filter(b=>b.uscitaPrevista&&b.stato!=='libera'&&new Date(b.uscitaPrevista)<=day.end&&!b.uscitaEffettiva).length);
+  dch('dd'); CH.dd=new Chart(document.getElementById('chartDelayDay'),{type:'bar',
+    data:{labels:lb,datasets:[{label:'Elicotteri in ritardo',data:dc,
+      backgroundColor:'rgba(239,68,68,.75)',borderColor:'rgba(127,29,29,1)',borderWidth:1,borderRadius:5}]},
+    options:CO('Numero')});
+
+  // Ritardo medio in ore
+  const ad=d7.map(day=>{
+    const rel=A.bays.filter(b=>b.uscitaPrevista&&b.stato!=='libera'&&new Date(b.uscitaPrevista)<=day.end);
+    if(!rel.length) return 0;
+    return +(rel.reduce((s,b)=>{const ref=b.uscitaEffettiva?new Date(b.uscitaEffettiva):day.end;return s+Math.max(0,ref-new Date(b.uscitaPrevista));},0)/rel.length/3600000).toFixed(1);
+  });
+  dch('ad'); CH.ad=new Chart(document.getElementById('chartAvgDelay'),{type:'line',
+    data:{labels:lb,datasets:[{label:'Ritardo medio (h)',data:ad,
+      borderColor:'rgba(37,99,235,1)',backgroundColor:'rgba(37,99,235,.15)',fill:true,tension:.35,pointRadius:5,pointBackgroundColor:'#1d4ed8'}]},
+    options:CO('Ore')});
+
+  // Occupazione 7 gg
+  const occ7=d7.map(d=>(A.historicalOccupancy||{})[dayKey(d.start)]??A.bays.filter(b=>b.stato!=='libera').length);
+  dch('oc'); CH.oc=new Chart(document.getElementById('chartOcc7'),{type:'line',
+    data:{labels:lb,datasets:[{label:'Baie occupate',data:occ7,
+      borderColor:'rgba(34,197,94,1)',backgroundColor:'rgba(34,197,94,.18)',fill:true,tension:.25,pointRadius:5,pointBackgroundColor:'#16a34a'}]},
+    options:CO('Baie')});
+
+  // Movimenti
+  const inD=d7.map(d=>A.movements.filter(m=>m.tipo==='IN'&&new Date(m.timestamp)>=d.start&&new Date(m.timestamp)<=d.end).length);
+  const outD=d7.map(d=>A.movements.filter(m=>m.tipo==='OUT'&&new Date(m.timestamp)>=d.start&&new Date(m.timestamp)<=d.end).length);
+  dch('mv'); CH.mv=new Chart(document.getElementById('chartMov'),{type:'bar',
+    data:{labels:lb,datasets:[
+      {label:'Ingressi',data:inD,backgroundColor:'rgba(59,130,246,.85)',borderRadius:5},
+      {label:'Uscite',data:outD,backgroundColor:'rgba(234,179,8,.85)',borderRadius:5}
+    ]},
+    options:CO('Movimenti')});
+
+  // Sosta media prevista vs effettiva per matricola (ultime 5 con dati completi)
+  const withDates=A.bays.filter(b=>b.ingressoEffettivo&&b.uscitaPrevista&&b.matricola);
+  const sostaLbls=withDates.map(b=>b.matricola);
+  const sostaPrev=withDates.map(b=>{const ip=b.ingressoPrevisto||b.ingressoEffettivo;return msToH(Math.max(0,new Date(b.uscitaPrevista)-new Date(ip)));});
+  const sostaEff=withDates.map(b=>{const ref=b.uscitaEffettiva?new Date(b.uscitaEffettiva):new Date();return msToH(Math.max(0,ref-new Date(b.ingressoEffettivo)));});
+  dch('sosta'); CH.sosta=new Chart(document.getElementById('chartSosta'),{type:'bar',
+    data:{labels:sostaLbls,datasets:[
+      {label:'Sosta prevista (h)',data:sostaPrev,backgroundColor:'rgba(59,130,246,.7)',borderRadius:4},
+      {label:'Sosta effettiva (h)',data:sostaEff,backgroundColor:'rgba(239,68,68,.7)',borderRadius:4}
+    ]},
+    options:CO('Ore')});
+
+  // Blocchi per tipologia (pie/doughnut)
+  const bfreq={};
+  A.bays.forEach(b=>{if(b.bloccoSelezionato&&b.bloccoSelezionato!==''){const lbl=BLOCCO_OPTIONS.find(o=>o.value===b.bloccoSelezionato)?.label||b.bloccoSelezionato;bfreq[lbl]=(bfreq[lbl]||0)+1;}});
+  const bkeys=Object.keys(bfreq),bvals=bkeys.map(k=>bfreq[k]);
+  dch('bl'); CH.bl=new Chart(document.getElementById('chartBlocchi'),{type:'doughnut',
+    data:{labels:bkeys.length?bkeys:['Nessun blocco'],
+      datasets:[{data:bvals.length?bvals:[1],
+        backgroundColor:['rgba(59,130,246,.8)','rgba(239,68,68,.8)','rgba(234,179,8,.8)','rgba(249,115,22,.8)'],
+        borderColor:'#111827',borderWidth:3}]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{color:'#475569',font:{size:12}},position:'right'}}}});
+}
+
+// ============================================================
+// RENDER ALL
+// ============================================================
+function renderAll(){
+  renderKpiTop(); renderKpiFull(); renderBays();
+  renderDelay(); renderProblems(); renderFleet(); renderMov();
+  renderCharts(); populateQuickBar();
+}
+
+// ============================================================
+// TABS
+// ============================================================
+document.querySelectorAll('.tab-btn').forEach(btn=>{
+  btn.addEventListener('click',function(){
+    document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
+    document.querySelectorAll('.tab-pane').forEach(p=>p.classList.remove('active'));
+    this.classList.add('active');
+    document.getElementById(this.dataset.tab).classList.add('active');
+  });
+});
+
+// ============================================================
+// AGGIUNGI ELICOTTERO
+// ============================================================
+function openAddDlg(){
+  document.getElementById('addReg').value='';
+  document.getElementById('addMsn').value='';
+  document.getElementById('addStato').value='disponibile';
+  document.getElementById('addModel').innerHTML=MODELS.map(m=>'<option>'+m+'</option>').join('');
+  document.getElementById('addDlg').showModal();
+}
+document.getElementById('btnAddHeli').addEventListener('click',openAddDlg);
+document.getElementById('btnAddHeli2').addEventListener('click',openAddDlg);
+document.getElementById('saveAddBtn').addEventListener('click',()=>{
+  const reg=document.getElementById('addReg').value.trim().toUpperCase();
+  if(!reg){ alert('Inserisci la matricola.'); return; }
+  if(A.fleet.some(h=>h.matricola===reg)){ alert('Matricola già presente.'); return; }
+  A.fleet.push({id:rid(),matricola:reg,msn:document.getElementById('addMsn').value.trim(),
+    modello:document.getElementById('addModel').value,stato:document.getElementById('addStato').value});
+  save(); renderAll(); document.getElementById('addDlg').close();
+});
+
+// ============================================================
+// RICERCA FLOTTA
+// ============================================================
+document.getElementById('searchFleet').addEventListener('input',renderFleet);
+
+// ============================================================
+// EXPORT / IMPORT JSON
+// ============================================================
+document.getElementById('btnExport').addEventListener('click',()=>{
+  const blob=new Blob([JSON.stringify(A,null,2)],{type:'application/json'});
+  const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
+  a.download='hangar_'+new Date().toISOString().slice(0,10)+'.json'; a.click();
+});
+document.getElementById('btnImport').addEventListener('click',()=>document.getElementById('importFile').click());
+document.getElementById('importFile').addEventListener('change',function(){
+  const f=this.files[0]; if(!f) return;
+  const r=new FileReader(); r.onload=e=>{
+    try{
+      const d=JSON.parse(e.target.result);
+      if(!d.fleet||!d.bays){ alert('File non valido.'); return; }
+      A=d; save(); renderAll(); alert('Dati importati.');
+    }catch(err){ alert('Errore JSON.'); }
+  }; r.readAsText(f); this.value='';
+});
+
+// ============================================================
+// RESET DEMO
+// ============================================================
+document.getElementById('btnReset').addEventListener('click',()=>{
+  if(!confirm('Ripristinare i dati demo? Le modifiche saranno perse.')) return;
+  A=defaultData(); save(); renderAll();
+});
+
+// ============================================================
+// AVVIO
+// ============================================================
+initApp();
+</script>
+</body>
+</html>

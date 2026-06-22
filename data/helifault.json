@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "saved_at": "2026-06-22T08:15:23.808Z",
+  "saved_at": "2026-06-22T08:36:17.687Z",
   "defects": [
     {
       "id": "DEF-001",
@@ -35,24 +35,24 @@
       ]
     },
     {
-      "id": "DEF-002",
       "ac": "I-AVIF",
       "type": "AW139",
       "ata": "32",
       "ata_desc": "Landing Gear",
       "desc": "WARNNG LAMP \"GEAR NOT DOWN\" intermittente durante approccio",
-      "prio": "AOG",
-      "status": "Aperto",
-      "date_open": "2026-06-18",
-      "date_close": null,
-      "mel": false,
-      "mel_ref": "",
-      "wo": "WO-4455",
       "pn_affected": "3903030-7",
       "sn_affected": "AW139-LG-1883",
+      "wo": "WO-4455",
       "reported_by": "Pilota",
-      "action_taken": "A/C ferma a terra. Troubleshooting avviato.",
+      "prio": "Bassa",
+      "status": "Chiuso",
+      "mel": false,
+      "mel_ref": "",
+      "date_open": "2026-06-18",
+      "date_close": null,
+      "action_taken": "sostituzione parte ",
       "notes": "AOG — operazioni sospese.",
+      "id": "DEF-002",
       "history": [
         {
           "t": "2026-06-18 07:15",
@@ -63,6 +63,21 @@
           "t": "2026-06-18 09:00",
           "u": "M. Brizzi",
           "e": "WO aperta. A/C in AOG. Tecnico allocato."
+        },
+        {
+          "t": "2026-06-22 08:33",
+          "u": "M. Brizzi",
+          "e": "Difetto aggiornato."
+        },
+        {
+          "t": "2026-06-22 08:35",
+          "u": "M. Brizzi",
+          "e": "Difetto aggiornato."
+        },
+        {
+          "t": "2026-06-22 08:35",
+          "u": "M. Brizzi",
+          "e": "Difetto aggiornato."
         }
       ]
     },
@@ -131,24 +146,24 @@
       ]
     },
     {
-      "id": "DEF-005",
       "ac": "I-AVIE",
       "type": "AW139",
       "ata": "71",
       "ata_desc": "Power Plant",
       "desc": "ENG 2 — TQ split superiore a 5% in hover OEI training",
-      "prio": "Media",
-      "status": "Chiuso",
-      "date_open": "2026-05-20",
-      "date_close": "2026-05-28",
-      "mel": false,
-      "mel_ref": "",
-      "wo": "WO-4380",
       "pn_affected": "1001108-1",
       "sn_affected": "AW139-E2-03112",
+      "wo": "WO-4380",
       "reported_by": "Pilota",
+      "prio": "Bassa",
+      "status": "Chiuso",
+      "mel": false,
+      "mel_ref": "",
+      "date_open": "2026-05-20",
+      "date_close": "2026-05-28",
       "action_taken": "Richiamato FADEC. Parametri rientrati in specifica dopo reset.",
       "notes": "Risolto.",
+      "id": "DEF-005",
       "history": [
         {
           "t": "2026-05-20 13:00",
@@ -159,6 +174,16 @@
           "t": "2026-05-28 09:00",
           "u": "AME Ferrari",
           "e": "FADEC reset effettuato. Parametri OK. Difetto chiuso."
+        },
+        {
+          "t": "2026-06-22 08:35",
+          "u": "M. Brizzi",
+          "e": "Difetto aggiornato."
+        },
+        {
+          "t": "2026-06-22 08:35",
+          "u": "M. Brizzi",
+          "e": "Difetto aggiornato."
         }
       ]
     },
@@ -195,24 +220,24 @@
       ]
     },
     {
-      "id": "DEF-007",
       "ac": "I-EMSA",
       "type": "AW169",
       "ata": "21",
       "ata_desc": "Air Conditioning",
       "desc": "ECS FAULT light — codice errore 211 su MFD",
-      "prio": "Media",
-      "status": "Aperto",
-      "date_open": "2026-06-19",
-      "date_close": null,
-      "mel": true,
-      "mel_ref": "MEL 21-05",
-      "wo": "WO-4458",
       "pn_affected": "40701-110-2",
       "sn_affected": "AW169-ECS-0553",
+      "wo": "WO-4458",
       "reported_by": "Crew",
+      "prio": "Media",
+      "status": "Chiuso",
+      "mel": true,
+      "mel_ref": "MEL 21-05",
+      "date_open": "2026-06-19",
+      "date_close": null,
       "action_taken": "Fault isolation in corso.",
       "notes": "Terza occorrenza su I-EMSA per sistema 21.",
+      "id": "DEF-007",
       "history": [
         {
           "t": "2026-06-19 11:00",
@@ -223,6 +248,11 @@
           "t": "2026-06-20 08:00",
           "u": "M. Brizzi",
           "e": "WO aperta. ATA 21 ripetitivo — escalation a Eng."
+        },
+        {
+          "t": "2026-06-22 08:36",
+          "u": "M. Brizzi",
+          "e": "Difetto aggiornato."
         }
       ]
     },

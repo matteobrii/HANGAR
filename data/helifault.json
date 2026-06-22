@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "saved_at": "2026-06-22T08:36:17.687Z",
+  "saved_at": "2026-06-22T08:50:36.139Z",
   "defects": [
     {
       "id": "DEF-001",
@@ -291,12 +291,12 @@
   ],
   "fleet": [
     {
-      "reg": "I-AVIE",
+      "reg": "I-MVRK",
       "make": "Leonardo",
       "model": "AW139",
-      "msn": "31706",
-      "year": 2014,
-      "base": "Colico",
+      "msn": "31870",
+      "year": 2019,
+      "base": "Como",
       "role": "HEMS",
       "status": "Operativo",
       "notes": "Motori P&W PT6C-67C. Config. HEMS full."

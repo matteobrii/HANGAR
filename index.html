@@ -1,1218 +1,1601 @@
 <!DOCTYPE html>
-<html lang="it">
+<html lang="it" data-theme="dark">
 <head>
-<meta charset="UTF-8"/>
-<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
-<title>Hangar Planner Part-145 Colico</title>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.5.0/chart.umd.min.js"></script>
-<style>
-:root{
-  --bg:#0f172a;--panel:rgba(255,255,255,.06);--border:rgba(255,255,255,.1);
-  --text:#e2e8f0;--muted:#94a3b8;--primary:#3b82f6;
-  --green:#16a34a;--red:#dc2626;--yellow:#ca8a04;--orange:#ea580c;
-  --radius:14px;
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>HeliFault — Defect Management | EMS Fleet</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300..700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js">
+// ─── PERSIST: localStorage auto-save ────────────────────────────────
+const LS_KEY = 'helifault_data_v1';
+
+function saveToLocalStorage(){
+  try {
+    localStorage.setItem(LS_KEY, JSON.stringify({defects, fleet, nextId, nextACId:fleet.length+1}));
+  } catch(e){ /* sandboxed iframe - silently skip */ }
 }
-*{box-sizing:border-box;margin:0;padding:0;}
-body{background:linear-gradient(135deg,#0f172a,#1e293b);color:var(--text);font-family:"Segoe UI",Tahoma,Arial,sans-serif;min-height:100vh;}
-.app{max-width:1700px;margin:0 auto;padding:20px;}
 
-/* TOPBAR */
-.topbar{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:14px;
-  margin-bottom:22px;background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);padding:16px 22px;}
-.topbar h1{font-size:20px;color:#fff;font-weight:800;}
-.topbar p{font-size:12px;color:var(--muted);margin-top:3px;}
-.top-btns{display:flex;gap:8px;flex-wrap:wrap;}
+function loadFromLocalStorage(){
+  try {
+    const raw = localStorage.getItem(LS_KEY);
+    if(!raw) return false;
+    const d = JSON.parse(raw);
+    if(d.defects) defects = d.defects;
+    if(d.fleet) fleet = d.fleet;
+    if(d.nextId) nextId = d.nextId;
+    return true;
+  } catch(e){ return false; }
+}
 
-/* TABS */
-.tabs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:20px;}
-.tab-btn{background:var(--panel);border:1px solid var(--border);color:var(--text);
-  padding:9px 18px;border-radius:999px;cursor:pointer;font-size:14px;transition:.15s;}
-.tab-btn:hover{background:rgba(255,255,255,.12);}
-.tab-btn.active{background:var(--primary);border-color:var(--primary);color:#fff;font-weight:700;}
-.tab-pane{display:none;}
-.tab-pane.active{display:block;}
+// ─── EXPORT / IMPORT JSON ────────────────────────────────────────────
+function exportJSON(){
+  const payload = {
+    version: 1,
+    exported_at: new Date().toISOString(),
+    exported_by: 'HeliFault EMS · Avincis Colico',
+    defects,
+    fleet,
+    nextId
+  };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], {type:'application/json'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  const date = new Date().toISOString().slice(0,10);
+  a.download = `HeliFault_backup_${date}.json`;
+  a.click();
+  toast('✓ Database salvato — ' + date);
+}
 
-/* BUTTON */
-.btn{display:inline-flex;align-items:center;gap:5px;border:none;border-radius:9px;
-  padding:9px 15px;cursor:pointer;font:inherit;font-size:13px;transition:.15s;}
-.btn:hover{filter:brightness(1.08);transform:translateY(-1px);}
-.btn-primary{background:var(--primary);color:#fff;}
-.btn-success{background:var(--green);color:#fff;}
-.btn-danger{background:var(--red);color:#fff;}
-.btn-warn{background:var(--orange);color:#fff;}
-.btn-ghost{background:rgba(255,255,255,.1);color:var(--text);}
-.btn-sm{padding:6px 11px;font-size:12px;}
+function importJSON(evt){
+  const file = evt.target.files[0];
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = function(e){
+    try {
+      const d = JSON.parse(e.target.result);
+      if(!d.defects || !d.fleet){
+        alert('File non valido: struttura JSON non riconosciuta.');
+        return;
+      }
+      if(!confirm(`Importare ${d.defects.length} difetti e ${d.fleet.length} aeromobili da "${file.name}"?\nI dati attuali in memoria saranno sostituiti.`)) return;
+      defects = d.defects;
+      fleet = d.fleet;
+      nextId = d.nextId || (defects.length + 1);
+      saveToLocalStorage();
+      // refresh all views
+      renderDashboard();
+      updateSidebarFleet();
+      updateACSelects();
+      document.getElementById('badge-open').textContent = defects.filter(d=>d.status==='Aperto').length;
+      if(currentView==='defects') renderTable();
+      if(currentView==='recurrence') renderRecurrence();
+      if(currentView==='fleet') renderFleet();
+      toast('✓ Database importato — ' + defects.length + ' difetti, ' + fleet.length + ' A/C');
+    } catch(err){
+      alert('Errore nella lettura del file JSON: ' + err.message);
+    }
+    evt.target.value = '';
+  };
+  reader.readAsText(file);
+}
 
-/* KPI */
-.kpi-group-title{font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;
-  letter-spacing:.08em;margin:16px 0 8px;padding-bottom:5px;border-bottom:1px solid var(--border);}
-.kpi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:11px;}
-.kpi-card{background:var(--panel);border:1px solid var(--border);border-radius:12px;
-  padding:14px 16px;position:relative;overflow:hidden;}
-.kpi-card::before{content:'';position:absolute;top:0;left:0;width:4px;height:100%;
-  background:var(--accent,#3b82f6);border-radius:4px 0 0 4px;}
-.kpi-card.green{--accent:#22c55e;}.kpi-card.red{--accent:#ef4444;}
-.kpi-card.yellow{--accent:#eab308;}.kpi-card.orange{--accent:var(--orange);}
-.kpi-card.purple{--accent:#8b5cf6;}.kpi-card.cyan{--accent:#06b6d4;}
-.kpi-card.rose{--accent:#f43f5e;}.kpi-card.blue{--accent:#3b82f6;}
-.kpi-label{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px;}
-.kpi-value{font-size:32px;font-weight:800;color:#fff;line-height:1;}
-.kpi-sub{font-size:11px;color:var(--muted);margin-top:4px;}
+</script>
+<style>
+/* ─── Design Tokens ─────────────────────────────── */
+:root,[data-theme="light"]{
+  --color-bg:#f7f6f2;--color-surface:#f9f8f5;--color-surface-2:#fbfbf9;
+  --color-surface-offset:#f0ede8;--color-surface-dynamic:#e6e3de;
+  --color-divider:#dcd9d5;--color-border:#d0cdc7;
+  --color-text:#28251d;--color-text-muted:#7a7974;--color-text-faint:#bab9b4;
+  --color-text-inverse:#f9f8f4;
+  --color-primary:#01696f;--color-primary-hover:#0c4e54;
+  --color-primary-active:#0f3638;--color-primary-hl:#cedcd8;
+  --color-warning:#964219;--color-warning-hl:#ddcfc6;
+  --color-error:#c0392b;--color-error-hover:#96281b;--color-error-hl:#f2d7d5;
+  --color-success:#437a22;--color-success-hl:#d4dfcc;
+  --color-gold:#d19900;--color-gold-hl:#e9e0c6;
+  --color-orange:#da7101;--color-orange-hl:#e7d7c4;
+  --color-notification:#a13544;
+  --radius-sm:.375rem;--radius-md:.5rem;--radius-lg:.75rem;--radius-xl:1rem;--radius-full:9999px;
+  --shadow-sm:0 1px 2px oklch(0.2 0.01 80/0.06);
+  --shadow-md:0 4px 12px oklch(0.2 0.01 80/0.08);
+  --shadow-lg:0 12px 32px oklch(0.2 0.01 80/0.14);
+  --transition:180ms cubic-bezier(0.16,1,0.3,1);
+  --font-body:'Inter','Helvetica Neue',sans-serif;
+  --font-mono:'JetBrains Mono',monospace;
+  --text-xs:clamp(.75rem,.7rem + .25vw,.875rem);
+  --text-sm:clamp(.875rem,.8rem + .35vw,1rem);
+  --text-base:clamp(1rem,.95rem + .25vw,1.125rem);
+  --text-lg:clamp(1.125rem,1rem + .75vw,1.5rem);
+  --text-xl:clamp(1.5rem,1.2rem + 1.25vw,2.25rem);
+  --space-1:.25rem;--space-2:.5rem;--space-3:.75rem;--space-4:1rem;
+  --space-5:1.25rem;--space-6:1.5rem;--space-8:2rem;--space-10:2.5rem;
+  --space-12:3rem;--space-16:4rem;
+  --sidebar-w:240px;
+}
+[data-theme="dark"]{
+  --color-bg:#0f0e0d;--color-surface:#161513;--color-surface-2:#1c1b19;
+  --color-surface-offset:#1d1c1a;--color-surface-dynamic:#2d2c2a;
+  --color-divider:#252422;--color-border:#333230;
+  --color-text:#cdccca;--color-text-muted:#797876;--color-text-faint:#4a4947;
+  --color-text-inverse:#2b2a28;
+  --color-primary:#4f98a3;--color-primary-hover:#227f8b;
+  --color-primary-active:#1a626b;--color-primary-hl:#1e3436;
+  --color-warning:#bb653b;--color-warning-hl:#3a2e26;
+  --color-error:#e74c3c;--color-error-hover:#c0392b;--color-error-hl:#3a1f1e;
+  --color-success:#6daa45;--color-success-hl:#243318;
+  --color-gold:#e8af34;--color-gold-hl:#352d16;
+  --color-orange:#fdab43;--color-orange-hl:#352b1e;
+  --color-notification:#dd6974;
+  --shadow-sm:0 1px 2px oklch(0 0 0/.25);
+  --shadow-md:0 4px 12px oklch(0 0 0/.35);
+  --shadow-lg:0 12px 32px oklch(0 0 0/.5);
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;scroll-behavior:smooth}
+body{min-height:100dvh;font-family:var(--font-body);font-size:var(--text-sm);color:var(--color-text);background:var(--color-bg);display:flex;overflow:hidden}
+img,svg{display:block;max-width:100%}
+button{cursor:pointer;background:none;border:none;font:inherit;color:inherit}
+input,select,textarea{font:inherit;color:inherit}
+table{border-collapse:collapse;width:100%}
+a,button,[role=button],input,textarea,select{transition:color var(--transition),background var(--transition),border-color var(--transition),box-shadow var(--transition)}
+:focus-visible{outline:2px solid var(--color-primary);outline-offset:2px;border-radius:var(--radius-sm)}
+::selection{background:oklch(from var(--color-primary) l c h/.2);color:var(--color-text)}
 
-/* BAIE */
-.bay-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(255px,1fr));gap:14px;}
-.bay-card{border-radius:14px;padding:16px;min-height:260px;cursor:pointer;
-  border:2px solid rgba(255,255,255,.15);transition:.2s;}
-.bay-card:hover{transform:translateY(-3px);box-shadow:0 16px 40px rgba(0,0,0,.4);}
-.bay-free{background:linear-gradient(135deg,#14532d,#16a34a);}
-.bay-occupied{background:linear-gradient(135deg,#7f1d1d,#dc2626);}
-.bay-waiting{background:linear-gradient(135deg,#78350f,#d97706);}
-.bay-title{font-size:20px;font-weight:800;margin-bottom:4px;}
-.bay-pill{display:inline-block;padding:3px 9px;border-radius:999px;
-  background:rgba(255,255,255,.2);font-size:11px;font-weight:700;text-transform:uppercase;margin-bottom:10px;}
-.bay-line{font-size:13px;margin:3px 0;line-height:1.4;}
-.bay-line strong{opacity:.6;font-weight:600;font-size:11px;text-transform:uppercase;}
-.bay-badge{display:inline-block;margin-top:8px;padding:5px 10px;
-  border-radius:8px;font-size:12px;font-weight:700;background:rgba(0,0,0,.28);}
-.bay-sit{margin-top:7px;font-size:12px;font-style:italic;opacity:.85;line-height:1.4;
-  background:rgba(0,0,0,.15);padding:6px 8px;border-radius:7px;}
-.bay-tqte{margin-top:6px;font-size:11px;background:rgba(0,0,0,.2);padding:4px 9px;border-radius:7px;}
+/* ─── Layout Shell ─────────────────────────────── */
+#sidebar{
+  width:var(--sidebar-w);min-width:var(--sidebar-w);height:100dvh;
+  background:var(--color-surface);border-right:1px solid var(--color-divider);
+  display:flex;flex-direction:column;overflow:hidden;flex-shrink:0;
+  position:sticky;top:0;
+}
+#main{flex:1;height:100dvh;overflow-y:auto;display:flex;flex-direction:column}
+#topbar{
+  position:sticky;top:0;z-index:20;
+  background:color-mix(in oklch,var(--color-bg) 85%,transparent);
+  backdrop-filter:blur(12px);border-bottom:1px solid var(--color-divider);
+  display:flex;align-items:center;gap:var(--space-3);
+  padding:var(--space-3) var(--space-6);min-height:56px;
+}
+#content{padding:var(--space-6);flex:1}
 
-/* BLOCCO PRINCIPALE — colori menù */
-.prob-forza{background:#1e3a5f;color:#bfdbfe;}
-.prob-materiali{background:#7f1d1d;color:#fecaca;}
-.prob-logistica{background:#422006;color:#fef3c7;}
-.prob-difetti{background:#431407;color:#fed7aa;}
-.prob-nessuno{background:#14532d;color:#dcfce7;}
+/* ─── Sidebar ──────────────────────────────────── */
+.sidebar-logo{
+  display:flex;align-items:center;gap:var(--space-3);
+  padding:var(--space-4) var(--space-4) var(--space-3);
+  border-bottom:1px solid var(--color-divider);
+}
+.logo-mark{
+  width:32px;height:32px;flex-shrink:0;
+  background:var(--color-primary);border-radius:var(--radius-md);
+  display:flex;align-items:center;justify-content:center;
+}
+.logo-mark svg{color:white;width:18px;height:18px}
+.logo-text{font-size:var(--text-sm);font-weight:700;letter-spacing:-.01em;color:var(--color-text)}
+.logo-sub{font-size:var(--text-xs);color:var(--color-text-muted);font-weight:400}
 
-/* PANEL, TABELLE */
-.panel{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);padding:18px;margin-bottom:18px;}
-.panel h2{color:#fff;font-size:15px;margin-bottom:14px;font-weight:700;}
-.panel h3{color:#fff;font-size:14px;margin-bottom:10px;font-weight:700;}
-.table-wrap{overflow:auto;border-radius:10px;border:1px solid var(--border);}
-table{width:100%;border-collapse:collapse;min-width:680px;}
-thead{background:rgba(255,255,255,.07);}
-th,td{padding:10px 11px;border-bottom:1px solid var(--border);text-align:left;font-size:13px;vertical-align:middle;}
-th{color:#fff;font-weight:700;white-space:nowrap;}
-td{color:var(--text);}
-tr:hover td{background:rgba(255,255,255,.03);}
-tr:last-child td{border-bottom:none;}
-.pill{display:inline-block;padding:3px 9px;border-radius:999px;font-size:11px;font-weight:700;}
-.pill-ok{background:#166534;color:#dcfce7;}
-.pill-late{background:#92400e;color:#fef3c7;}
-.pill-highlate{background:#7f1d1d;color:#fee2e2;}
-.pill-open{background:#1e3a5f;color:#bfdbfe;}
+.sidebar-section-label{
+  font-size:var(--text-xs);font-weight:600;letter-spacing:.08em;text-transform:uppercase;
+  color:var(--color-text-faint);padding:var(--space-4) var(--space-4) var(--space-1);
+}
+.nav-item{
+  display:flex;align-items:center;gap:var(--space-3);
+  padding:var(--space-2) var(--space-4);border-radius:var(--radius-md);
+  margin:1px var(--space-2);font-size:var(--text-sm);
+  color:var(--color-text-muted);cursor:pointer;user-select:none;
+}
+.nav-item:hover{background:var(--color-surface-offset);color:var(--color-text)}
+.nav-item.active{background:var(--color-primary-hl);color:var(--color-primary);font-weight:500}
+.nav-item svg{width:16px;height:16px;flex-shrink:0}
+.nav-badge{
+  margin-left:auto;background:var(--color-notification);color:#fff;
+  font-size:10px;font-weight:700;padding:1px 6px;border-radius:var(--radius-full);min-width:18px;text-align:center;
+}
 
-/* FORM */
-.form-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;}
-.field label{display:block;font-size:11px;color:var(--muted);margin-bottom:4px;text-transform:uppercase;letter-spacing:.05em;}
-.field input,.field select,.field textarea{width:100%;background:#0f172a;border:1px solid var(--border);
-  border-radius:8px;padding:9px 11px;color:#fff;font:inherit;font-size:14px;}
-.field textarea{min-height:75px;resize:vertical;}
-.field input:focus,.field select:focus,.field textarea:focus{outline:none;border-color:var(--primary);}
+.sidebar-fleet{padding:var(--space-3) var(--space-4);border-top:1px solid var(--color-divider);margin-top:auto}
+.fleet-card{
+  background:var(--color-surface-offset);border-radius:var(--radius-lg);
+  padding:var(--space-3);display:flex;align-items:center;gap:var(--space-2);
+}
+.fleet-dot{width:8px;height:8px;border-radius:50%;background:var(--color-success);flex-shrink:0}
+.fleet-name{font-size:var(--text-xs);font-weight:600;color:var(--color-text)}
+.fleet-meta{font-size:var(--text-xs);color:var(--color-text-muted)}
 
-/* BLOCCO SELECT PRINCIPALE — grande e visibile */
-.blocco-select-wrap{background:rgba(239,68,68,.12);border:2px solid rgba(239,68,68,.4);
-  border-radius:12px;padding:14px;margin:14px 0;}
-.blocco-select-wrap label{font-size:13px;color:#fca5a5;font-weight:700;display:block;margin-bottom:8px;text-transform:uppercase;}
-.blocco-select-wrap select{width:100%;background:#1a0a0a;border:2px solid #dc2626;
-  border-radius:8px;padding:12px 14px;color:#fff;font:inherit;font-size:15px;font-weight:700;}
+/* ─── Topbar ───────────────────────────────────── */
+.topbar-title{font-size:var(--text-base);font-weight:600;flex:1}
+.topbar-subtitle{font-size:var(--text-xs);color:var(--color-text-muted)}
+.btn{
+  display:inline-flex;align-items:center;gap:var(--space-2);
+  padding:var(--space-2) var(--space-4);border-radius:var(--radius-md);
+  font-size:var(--text-sm);font-weight:500;cursor:pointer;white-space:nowrap;
+}
+.btn svg{width:15px;height:15px}
+.btn-primary{background:var(--color-primary);color:#fff}
+.btn-primary:hover{background:var(--color-primary-hover)}
+.btn-ghost{color:var(--color-text-muted);border:1px solid var(--color-border)}
+.btn-ghost:hover{background:var(--color-surface-offset);color:var(--color-text)}
+.btn-danger{background:var(--color-error);color:#fff}
+.btn-danger:hover{background:var(--color-error-hover)}
+.theme-toggle{
+  width:36px;height:36px;display:flex;align-items:center;justify-content:center;
+  border-radius:var(--radius-md);color:var(--color-text-muted);
+}
+.theme-toggle:hover{background:var(--color-surface-offset);color:var(--color-text)}
+.theme-toggle svg{width:18px;height:18px}
 
-/* QUICK BAR */
-.quick-bar{display:grid;grid-template-columns:1fr 1fr 1fr 180px 140px auto;gap:10px;
-  background:rgba(255,255,255,.05);border:1px solid var(--border);border-radius:12px;
-  padding:14px;margin-bottom:16px;align-items:end;}
-@media(max-width:1100px){.quick-bar{grid-template-columns:1fr 1fr;}}
+/* ─── KPI Cards ────────────────────────────────── */
+.kpi-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(180px,100%),1fr));gap:var(--space-4);margin-bottom:var(--space-6)}
+.kpi-card{
+  background:var(--color-surface);border:1px solid var(--color-border);
+  border-radius:var(--radius-lg);padding:var(--space-4);
+  box-shadow:var(--shadow-sm);
+}
+.kpi-label{font-size:var(--text-xs);color:var(--color-text-muted);font-weight:500;text-transform:uppercase;letter-spacing:.05em;margin-bottom:var(--space-2)}
+.kpi-value{font-size:var(--text-xl);font-weight:700;font-variant-numeric:tabular-nums;line-height:1.1;color:var(--color-text)}
+.kpi-delta{font-size:var(--text-xs);margin-top:var(--space-1);display:flex;align-items:center;gap:4px}
+.delta-up{color:var(--color-error)}
+.delta-dn{color:var(--color-success)}
+.delta-neutral{color:var(--color-text-muted)}
+.kpi-accent-primary .kpi-value{color:var(--color-primary)}
+.kpi-accent-warn .kpi-value{color:var(--color-warning)}
+.kpi-accent-error .kpi-value{color:var(--color-error)}
+.kpi-accent-gold .kpi-value{color:var(--color-gold)}
 
-/* DATE GROUP */
-.date-group{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
-.date-card{background:rgba(255,255,255,.04);border:1px solid var(--border);border-radius:10px;padding:12px;}
-.date-card-title{font-size:11px;color:var(--muted);font-weight:700;text-transform:uppercase;
-  letter-spacing:.06em;margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid var(--border);}
-.date-card.green-border{border-color:rgba(34,197,94,.4);}
-.date-card.red-border{border-color:rgba(239,68,68,.4);}
+/* ─── Section Header ───────────────────────────── */
+.section-hdr{display:flex;align-items:center;justify-content:space-between;margin-bottom:var(--space-4);flex-wrap:wrap;gap:var(--space-3)}
+.section-title{font-size:var(--text-base);font-weight:700;color:var(--color-text)}
+.section-actions{display:flex;align-items:center;gap:var(--space-2)}
 
-/* TQTE */
-.tqte-row{display:grid;grid-template-columns:70px 90px 150px 1fr 120px 130px 36px;gap:8px;align-items:end;
-  background:rgba(255,255,255,.04);padding:10px;border-radius:10px;border:1px solid var(--border);margin-bottom:8px;}
+/* ─── Filters Bar ──────────────────────────────── */
+.filters-bar{
+  display:flex;align-items:center;gap:var(--space-3);flex-wrap:wrap;
+  background:var(--color-surface);border:1px solid var(--color-border);
+  border-radius:var(--radius-lg);padding:var(--space-3) var(--space-4);
+  margin-bottom:var(--space-4);
+}
+.filter-group{display:flex;align-items:center;gap:var(--space-2)}
+.filter-label{font-size:var(--text-xs);color:var(--color-text-muted);font-weight:500;white-space:nowrap}
+.filter-select,.filter-input{
+  background:var(--color-surface-offset);border:1px solid var(--color-border);
+  border-radius:var(--radius-md);padding:var(--space-1) var(--space-3);
+  font-size:var(--text-xs);color:var(--color-text);min-width:120px;
+}
+.filter-select:hover,.filter-input:hover{border-color:var(--color-primary)}
+.filter-select:focus,.filter-input:focus{border-color:var(--color-primary);outline:none}
+.search-wrap{flex:1;min-width:200px;position:relative}
+.search-wrap svg{position:absolute;left:var(--space-3);top:50%;transform:translateY(-50%);width:14px;height:14px;color:var(--color-text-faint)}
+.search-wrap input{
+  width:100%;background:var(--color-surface-offset);border:1px solid var(--color-border);
+  border-radius:var(--radius-md);padding:var(--space-1) var(--space-3) var(--space-1) var(--space-8);
+  font-size:var(--text-xs);color:var(--color-text);
+}
+.search-wrap input:focus{border-color:var(--color-primary);outline:none}
 
-/* GRAFICI */
-.chart-wrap{position:relative;width:100%;height:280px;}
-.chart-wrap canvas{position:absolute;top:0;left:0;width:100%!important;height:100%!important;}
-.chart-panel{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);padding:16px;margin-bottom:18px;}
-.chart-panel h3{color:#fff;font-size:14px;font-weight:700;margin-bottom:12px;}
-.two-col{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
-@media(max-width:900px){.two-col{grid-template-columns:1fr;}}
+/* ─── Table ────────────────────────────────────── */
+.table-wrap{
+  background:var(--color-surface);border:1px solid var(--color-border);
+  border-radius:var(--radius-lg);overflow:hidden;box-shadow:var(--shadow-sm);
+  overflow-x:auto;
+}
+.data-table{width:100%;min-width:900px}
+.data-table thead{background:var(--color-surface-offset)}
+.data-table th{
+  font-size:var(--text-xs);font-weight:600;color:var(--color-text-muted);
+  text-transform:uppercase;letter-spacing:.05em;
+  padding:var(--space-3) var(--space-4);text-align:left;white-space:nowrap;
+  border-bottom:1px solid var(--color-divider);cursor:pointer;user-select:none;
+}
+.data-table th:hover{color:var(--color-text)}
+.data-table th .sort-icon{display:inline-block;margin-left:4px;opacity:.4;font-size:10px}
+.data-table th.sorted .sort-icon{opacity:1;color:var(--color-primary)}
+.data-table td{
+  padding:var(--space-3) var(--space-4);border-bottom:1px solid var(--color-divider);
+  font-size:var(--text-xs);vertical-align:middle;
+}
+.data-table tbody tr:last-child td{border-bottom:none}
+.data-table tbody tr:hover{background:var(--color-surface-offset)}
+.data-table tbody tr{cursor:pointer}
 
-/* DIALOG */
-dialog{border:none;border-radius:16px;padding:0;width:min(960px,96vw);
-  background:#111827;color:#fff;box-shadow:0 24px 80px rgba(0,0,0,.6);}
-dialog::backdrop{background:rgba(0,0,0,.7);}
-.mh{padding:16px 22px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;}
-.mh h2{color:#fff;font-size:16px;}
-.mb{padding:18px 22px;max-height:78vh;overflow:auto;}
-.mf{padding:12px 22px;border-top:1px solid var(--border);display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap;}
-.close-x{background:rgba(255,255,255,.1);border:none;color:#fff;width:32px;height:32px;border-radius:50%;font-size:16px;cursor:pointer;}
+/* ─── Badges / Status ──────────────────────────── */
+.badge{
+  display:inline-flex;align-items:center;gap:4px;
+  padding:2px 8px;border-radius:var(--radius-full);
+  font-size:10px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;white-space:nowrap;
+}
+.badge-open{background:var(--color-error-hl);color:var(--color-error)}
+.badge-progress{background:var(--color-gold-hl);color:var(--color-gold)}
+.badge-deferred{background:var(--color-orange-hl);color:var(--color-orange)}
+.badge-closed{background:var(--color-success-hl);color:var(--color-success)}
+.badge-mel{background:var(--color-warning-hl);color:var(--color-warning)}
+.badge-dot{width:6px;height:6px;border-radius:50%;background:currentColor;flex-shrink:0}
 
-/* SEZIONI NEL DIALOG */
-.sect{margin:18px 0 10px;font-weight:700;color:#60a5fa;font-size:12px;
-  text-transform:uppercase;letter-spacing:.07em;padding-bottom:5px;border-bottom:1px solid rgba(96,165,250,.25);}
+.priority-chip{
+  display:inline-flex;align-items:center;gap:4px;
+  font-size:10px;font-weight:700;padding:2px 6px;border-radius:var(--radius-sm);
+}
+.prio-aog{background:var(--color-error);color:#fff}
+.prio-high{background:var(--color-warning-hl);color:var(--color-warning)}
+.prio-med{background:var(--color-gold-hl);color:var(--color-gold)}
+.prio-low{background:var(--color-surface-dynamic);color:var(--color-text-muted)}
 
-/* PROBLEMA FREQ LIST */
-.pf-list{display:flex;flex-direction:column;gap:8px;}
-.pf-row{display:flex;justify-content:space-between;align-items:center;
-  background:rgba(255,255,255,.05);padding:10px 14px;border-radius:10px;}
-.pf-count{padding:4px 12px;border-radius:999px;background:rgba(255,255,255,.12);font-weight:800;font-size:15px;}
+.ac-tag{
+  font-family:var(--font-mono);font-size:11px;font-weight:500;
+  background:var(--color-primary-hl);color:var(--color-primary);
+  padding:2px 7px;border-radius:var(--radius-sm);
+}
+.ata-tag{
+  font-family:var(--font-mono);font-size:11px;
+  color:var(--color-text-muted);background:var(--color-surface-dynamic);
+  padding:2px 6px;border-radius:var(--radius-sm);
+}
 
-/* TOOLBAR */
-.toolbar{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px;align-items:center;}
-::-webkit-scrollbar{width:5px;height:5px;}
-::-webkit-scrollbar-thumb{background:rgba(255,255,255,.15);border-radius:3px;}
+/* ─── Modal ────────────────────────────────────── */
+#modal-overlay{
+  display:none;position:fixed;inset:0;background:oklch(0 0 0/.6);
+  z-index:100;align-items:center;justify-content:center;padding:var(--space-4);
+}
+#modal-overlay.open{display:flex}
+.modal{
+  background:var(--color-surface);border:1px solid var(--color-border);
+  border-radius:var(--radius-xl);box-shadow:var(--shadow-lg);
+  width:100%;max-width:680px;max-height:90dvh;overflow:hidden;
+  display:flex;flex-direction:column;
+}
+.modal-header{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:var(--space-4) var(--space-6);border-bottom:1px solid var(--color-divider);
+}
+.modal-title{font-size:var(--text-base);font-weight:700}
+.modal-close{
+  width:32px;height:32px;display:flex;align-items:center;justify-content:center;
+  border-radius:var(--radius-md);color:var(--color-text-muted);
+}
+.modal-close:hover{background:var(--color-surface-offset);color:var(--color-text)}
+.modal-close svg{width:18px;height:18px}
+.modal-body{overflow-y:auto;padding:var(--space-6);flex:1}
+.modal-footer{
+  padding:var(--space-4) var(--space-6);border-top:1px solid var(--color-divider);
+  display:flex;align-items:center;justify-content:flex-end;gap:var(--space-3);
+}
+
+/* ─── Form ─────────────────────────────────────── */
+.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:var(--space-4)}
+.form-grid.full{grid-template-columns:1fr}
+.form-field{display:flex;flex-direction:column;gap:var(--space-1)}
+.form-field.span2{grid-column:span 2}
+.form-label{font-size:var(--text-xs);font-weight:600;color:var(--color-text-muted);text-transform:uppercase;letter-spacing:.05em}
+.form-input,.form-select,.form-textarea{
+  background:var(--color-surface-offset);border:1px solid var(--color-border);
+  border-radius:var(--radius-md);padding:var(--space-2) var(--space-3);
+  font-size:var(--text-sm);color:var(--color-text);width:100%;
+}
+.form-input:hover,.form-select:hover,.form-textarea:hover{border-color:var(--color-primary)}
+.form-input:focus,.form-select:focus,.form-textarea:focus{border-color:var(--color-primary);outline:none;box-shadow:0 0 0 3px oklch(from var(--color-primary) l c h/.15)}
+.form-textarea{resize:vertical;min-height:80px;font-family:var(--font-body)}
+
+/* ─── Detail Panel ─────────────────────────────── */
+.detail-grid{display:grid;grid-template-columns:1fr 1fr;gap:var(--space-4) var(--space-6)}
+.detail-field{}
+.detail-key{font-size:var(--text-xs);font-weight:600;color:var(--color-text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px}
+.detail-val{font-size:var(--text-sm);color:var(--color-text)}
+.detail-val.mono{font-family:var(--font-mono);font-size:var(--text-xs)}
+.detail-desc{
+  background:var(--color-surface-offset);border-radius:var(--radius-md);
+  padding:var(--space-3);font-size:var(--text-sm);line-height:1.6;
+  color:var(--color-text);margin-top:var(--space-4);
+}
+.detail-timeline{margin-top:var(--space-4)}
+.timeline-item{display:flex;gap:var(--space-3);padding:var(--space-2) 0;border-bottom:1px solid var(--color-divider);align-items:flex-start}
+.timeline-item:last-child{border-bottom:none}
+.timeline-dot{width:8px;height:8px;border-radius:50%;background:var(--color-primary);flex-shrink:0;margin-top:5px}
+.timeline-content{flex:1}
+.timeline-time{font-size:var(--text-xs);color:var(--color-text-muted)}
+.timeline-text{font-size:var(--text-xs);color:var(--color-text);margin-top:2px}
+
+/* ─── Recurrence Chart ─────────────────────────── */
+.chart-row{display:grid;grid-template-columns:1fr 1fr;gap:var(--space-4);margin-bottom:var(--space-6)}
+.chart-card{
+  background:var(--color-surface);border:1px solid var(--color-border);
+  border-radius:var(--radius-lg);padding:var(--space-4);box-shadow:var(--shadow-sm);
+}
+.chart-title{font-size:var(--text-sm);font-weight:600;color:var(--color-text);margin-bottom:var(--space-3)}
+.bar-chart-wrap{display:flex;flex-direction:column;gap:var(--space-2)}
+.bar-item{display:flex;align-items:center;gap:var(--space-3);font-size:var(--text-xs)}
+.bar-label{width:80px;color:var(--color-text-muted);text-align:right;flex-shrink:0;font-family:var(--font-mono);font-size:10px}
+.bar-track{flex:1;height:16px;background:var(--color-surface-dynamic);border-radius:var(--radius-sm);overflow:hidden}
+.bar-fill{height:100%;border-radius:var(--radius-sm);transition:width .6s cubic-bezier(.16,1,.3,1)}
+.bar-count{width:24px;text-align:right;color:var(--color-text-muted);flex-shrink:0;font-weight:600;font-family:var(--font-mono)}
+
+.donut-wrap{display:flex;align-items:center;justify-content:center;gap:var(--space-6);padding:var(--space-2) 0}
+.donut-legend{display:flex;flex-direction:column;gap:var(--space-2)}
+.legend-item{display:flex;align-items:center;gap:var(--space-2);font-size:var(--text-xs);color:var(--color-text)}
+.legend-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0}
+
+/* ─── Empty State ──────────────────────────────── */
+.empty-state{
+  display:flex;flex-direction:column;align-items:center;
+  text-align:center;padding:var(--space-16) var(--space-8);
+  color:var(--color-text-muted);
+}
+.empty-state svg{width:40px;height:40px;color:var(--color-text-faint);margin-bottom:var(--space-3)}
+.empty-state h3{font-size:var(--text-sm);font-weight:600;color:var(--color-text);margin-bottom:var(--space-1)}
+.empty-state p{font-size:var(--text-xs);max-width:32ch;line-height:1.6}
+
+/* ─── Toast ────────────────────────────────────── */
+#toast{
+  position:fixed;bottom:var(--space-6);right:var(--space-6);z-index:200;
+  background:var(--color-text-inverse,#fff);color:var(--color-bg);
+  padding:var(--space-3) var(--space-4);border-radius:var(--radius-lg);
+  font-size:var(--text-xs);font-weight:600;box-shadow:var(--shadow-lg);
+  display:none;align-items:center;gap:var(--space-2);
+  transition:opacity .3s,transform .3s;
+  max-width:320px;
+}
+#toast.show{display:flex}
+#toast svg{width:16px;height:16px;flex-shrink:0}
+[data-theme="dark"] #toast{background:var(--color-surface-2);color:var(--color-text);border:1px solid var(--color-border)}
+
+/* ─── Mobile ───────────────────────────────────── */
+@media(max-width:768px){
+  #sidebar{display:none}
+  .chart-row{grid-template-columns:1fr}
+  .form-grid{grid-template-columns:1fr}
+  .form-field.span2{grid-column:span 1}
+  .kpi-grid{grid-template-columns:repeat(2,1fr)}
+  #content{padding:var(--space-4)}
+}
 </style>
 </head>
 <body>
-<div class="app">
 
-<div class="topbar">
-  <div>
-    <h1>Hangar Planner Part-145 — Avincis Colico</h1>
-    <p>7 baie · KPI · WO · TQ/TE · localStorage · Microsoft Edge</p>
+<!-- ═══ SIDEBAR ══════════════════════════════════════════════════════ -->
+<aside id="sidebar">
+  <div class="sidebar-logo">
+    <div class="logo-mark">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/>
+      </svg>
+    </div>
+    <div>
+      <div class="logo-text">HeliFault</div>
+      <div class="logo-sub">EMS Defect Manager</div>
+    </div>
   </div>
-  <div class="top-btns">
-    <button class="btn btn-success" id="btnAddHeli">+ Aggiungi elicottero</button>
-    <button class="btn btn-ghost" id="btnExport">Esporta JSON</button>
-    <button class="btn btn-ghost" id="btnImport">Importa JSON</button>
-    <button class="btn btn-ghost" id="btnReset">Demo</button>
-    <input type="file" id="importFile" accept=".json" style="display:none"/>
+
+  <div class="sidebar-section-label">Principale</div>
+  <div class="nav-item active" onclick="showView('dashboard')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+    Dashboard
   </div>
-</div>
+  <div class="nav-item" onclick="showView('defects')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+    Difetti
+    <span class="nav-badge" id="badge-open">0</span>
+  </div>
+  <div class="nav-item" onclick="showView('recurrence')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg>
+    Difetti Ripetitivi
+  </div>
 
-<div class="tabs">
-  <button class="tab-btn active" data-tab="tab-hangar">Occupazione Hangar</button>
-  <button class="tab-btn" data-tab="tab-ritardi">Ritardi</button>
-  <button class="tab-btn" data-tab="tab-problemi">Problemi e Blocchi</button>
-  <button class="tab-btn" data-tab="tab-kpi">KPI / Analisi</button>
-  <button class="tab-btn" data-tab="tab-flotta">Lista Flotta</button>
-</div>
+  <div class="sidebar-section-label">Flotta</div>
+  <div class="nav-item" onclick="showView('fleet')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v2"/><line x1="12" y1="12" x2="12" y2="16"/><line x1="10" y1="14" x2="14" y2="14"/></svg>
+    Gestione Flotta
+  </div>
+  <div class="sidebar-section-label" style="margin-top:0">Aeromobili</div>
+  <!-- dynamic fleet nav items injected by updateSidebarFleet() -->
 
-<!-- TAB HANGAR -->
-<div class="tab-pane active" id="tab-hangar">
-  <div id="kpiTop"></div>
-  <div class="panel">
-    <h2>Inserimento rapido baia</h2>
-    <div class="quick-bar">
-      <div class="field"><label>Baia</label><select id="qBaia"></select></div>
-      <div class="field"><label>Elicottero</label><select id="qMatricola"></select></div>
-      <div class="field"><label>WO</label><input id="qWO" placeholder="WO 12345"/></div>
-      <div class="field"><label>Uscita prevista</label><input type="datetime-local" id="qUscita"/></div>
-      <div class="field"><label>Stato</label>
-        <select id="qStato" style="width:100%;background:#0f172a;border:1px solid var(--border);
-          color:#fff;padding:9px 11px;border-radius:8px;font:inherit;font-size:14px;">
-          <option>occupata</option><option>prenotata</option><option>in attesa</option>
-        </select>
+  <div class="sidebar-fleet">
+    <div class="fleet-card">
+      <div class="fleet-dot"></div>
+      <div>
+        <div class="fleet-name">Colico Base 145</div>
+        <div class="fleet-meta">Avincis Italia S.r.l.</div>
       </div>
-      <button class="btn btn-primary" id="qSave" style="white-space:nowrap;align-self:end;">Assegna baia</button>
     </div>
-    <p style="font-size:12px;color:var(--muted);">Clicca sulla card baia per tutti i dettagli: date complete, blocco, materiali, difetti, TQ/TE.</p>
   </div>
-  <div class="panel">
-    <h2>Occupazione delle 7 baie</h2>
-    <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:14px;">
-      <span style="display:flex;align-items:center;gap:7px;font-size:13px;color:var(--muted);">
-        <span style="width:11px;height:11px;border-radius:50%;background:#16a34a;display:inline-block;"></span>Libera</span>
-      <span style="display:flex;align-items:center;gap:7px;font-size:13px;color:var(--muted);">
-        <span style="width:11px;height:11px;border-radius:50%;background:#dc2626;display:inline-block;"></span>Occupata</span>
-      <span style="display:flex;align-items:center;gap:7px;font-size:13px;color:var(--muted);">
-        <span style="width:11px;height:11px;border-radius:50%;background:#d97706;display:inline-block;"></span>Prenotata / In attesa</span>
-    </div>
-    <div class="bay-grid" id="bayGrid"></div>
-  </div>
-</div>
+</aside>
 
-<!-- TAB RITARDI -->
-<div class="tab-pane" id="tab-ritardi">
-  <div class="panel">
-    <h2>Tabella ritardi elicotteri in hangar</h2>
-    <div class="table-wrap">
-      <table>
-        <thead><tr>
-          <th>Baia</th><th>Matricola</th><th>Modello</th><th>MSN</th>
-          <th>Entrata prevista</th><th>Entrata effettiva</th>
-          <th>Uscita prevista</th><th>Uscita effettiva</th>
-          <th>Sosta prev. (h)</th><th>Sosta eff. (h)</th>
-          <th>Delta sosta</th><th>Stato</th>
-        </tr></thead>
-        <tbody id="delayBody"></tbody>
-      </table>
+<!-- ═══ MAIN ═════════════════════════════════════════════════════════ -->
+<div id="main">
+  <!-- TOPBAR -->
+  <header id="topbar">
+    <div>
+      <div class="topbar-title" id="topbar-title">Dashboard</div>
+      <div class="topbar-subtitle" id="topbar-sub">Panoramica flotta elisoccorso · Base Colico</div>
     </div>
-  </div>
-  <div class="two-col">
-    <div class="chart-panel">
-      <h3>Elicotteri in ritardo per giorno (ultimi 7 gg)</h3>
-      <div class="chart-wrap"><canvas id="chartDelayDay"></canvas></div>
+    <div style="display:flex;align-items:center;gap:var(--space-2);margin-left:auto">
+      <button class="btn btn-ghost" onclick="exportJSON()" title="Salva tutti i dati in un file JSON">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Salva
+      </button>
+      <label class="btn btn-ghost" title="Carica un file JSON salvato in precedenza" style="cursor:pointer">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+        Carica
+        <input type="file" accept=".json" onchange="importJSON(event)" style="display:none">
+      </label>
+      <button class="btn btn-primary" id="btn-new" onclick="openNewDefect()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        Nuovo Difetto
+      </button>
+      <button class="theme-toggle" data-theme-toggle aria-label="Toggle theme">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+      </button>
     </div>
-    <div class="chart-panel">
-      <h3>Ritardo medio giornaliero in ore (ultimi 7 gg)</h3>
-      <div class="chart-wrap"><canvas id="chartAvgDelay"></canvas></div>
-    </div>
-  </div>
-</div>
+  </header>
 
-<!-- TAB PROBLEMI -->
-<div class="tab-pane" id="tab-problemi">
-  <div style="display:grid;grid-template-columns:2fr 1fr;gap:16px;">
-    <div class="panel">
-      <h2>Blocchi attivi per baia</h2>
-      <div class="table-wrap">
-        <table>
+  <!-- CONTENT -->
+  <div id="content">
+
+    <!-- ── DASHBOARD VIEW ───────────────────────────────────── -->
+    <div id="view-dashboard">
+      <div class="kpi-grid" id="kpi-grid"></div>
+
+      <div class="chart-row">
+        <div class="chart-card">
+          <div class="chart-title">Difetti per Sistema ATA</div>
+          <div class="bar-chart-wrap" id="chart-ata"></div>
+        </div>
+        <div class="chart-card">
+          <div class="chart-title">Distribuzione per Stato</div>
+          <div class="donut-wrap">
+            <svg id="donut-svg" width="120" height="120" viewBox="0 0 120 120"></svg>
+            <div class="donut-legend" id="donut-legend"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="section-hdr">
+        <div class="section-title">⚠️ Difetti AOG / Alta Priorità</div>
+      </div>
+      <div class="table-wrap" style="margin-bottom:var(--space-6)">
+        <table class="data-table">
           <thead><tr>
-            <th>Baia</th><th>Matricola</th><th>Modello</th>
-            <th>Situazione attuale</th><th>TQ/TE aperte</th><th>Blocco principale</th>
+            <th>ID</th><th>A/C</th><th>ATA</th><th>Descrizione</th><th>Stato</th><th>Aperto il</th>
           </tr></thead>
-          <tbody id="problemBody"></tbody>
+          <tbody id="aog-table-body"></tbody>
         </table>
       </div>
     </div>
-    <div class="panel">
-      <h3>Frequenza blocchi flotta</h3>
-      <div class="pf-list" id="pfList"></div>
-    </div>
-  </div>
-</div>
 
-<!-- TAB KPI -->
-<div class="tab-pane" id="tab-kpi">
-  <div id="kpiFull"></div>
-  <div class="two-col" style="margin-top:16px;">
-    <div class="chart-panel">
-      <h3>Occupazione baie — ultimi 7 giorni</h3>
-      <div class="chart-wrap"><canvas id="chartOcc7"></canvas></div>
-    </div>
-    <div class="chart-panel">
-      <h3>Movimenti in/out — ultimi 7 giorni</h3>
-      <div class="chart-wrap"><canvas id="chartMov"></canvas></div>
-    </div>
-  </div>
-  <div class="two-col">
-    <div class="chart-panel">
-      <h3>Sosta media effettiva vs prevista (ore)</h3>
-      <div class="chart-wrap"><canvas id="chartSosta"></canvas></div>
-    </div>
-    <div class="chart-panel">
-      <h3>Blocchi per tipologia</h3>
-      <div class="chart-wrap"><canvas id="chartBlocchi"></canvas></div>
-    </div>
-  </div>
-  <div class="panel" style="margin-top:16px;">
-    <h2>Registro movimenti</h2>
-    <div class="table-wrap">
-      <table>
-        <thead><tr><th>Data/Ora</th><th>Tipo</th><th>Baia</th><th>Matricola</th><th>Dettaglio</th></tr></thead>
-        <tbody id="movBody"></tbody>
-      </table>
-    </div>
-  </div>
-</div>
+    <!-- ── DEFECTS VIEW ─────────────────────────────────────── -->
+    <div id="view-defects" style="display:none">
+      <div class="filters-bar">
+        <div class="search-wrap">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <input type="text" id="search-input" placeholder="Cerca per descrizione, P/N, S/N..." oninput="renderTable()">
+        </div>
+        <div class="filter-group">
+          <span class="filter-label">A/C</span>
+          <select class="filter-select" id="filter-ac" onchange="renderTable()">
+            <option value="">Tutti</option>
+            <option>I-AVIE</option><option>I-AVIF</option><option>I-EMSA</option><option>I-EMSB</option>
+          </select>
+        </div>
+        <div class="filter-group">
+          <span class="filter-label">ATA</span>
+          <select class="filter-select" id="filter-ata" onchange="renderTable()"></select>
+        </div>
+        <div class="filter-group">
+          <span class="filter-label">Stato</span>
+          <select class="filter-select" id="filter-status" onchange="renderTable()">
+            <option value="">Tutti</option>
+            <option>Aperto</option><option>In Lavorazione</option><option>Differito</option><option>Chiuso</option>
+          </select>
+        </div>
+        <div class="filter-group">
+          <span class="filter-label">Priorità</span>
+          <select class="filter-select" id="filter-prio" onchange="renderTable()">
+            <option value="">Tutte</option>
+            <option>AOG</option><option>Alta</option><option>Media</option><option>Bassa</option>
+          </select>
+        </div>
+        <button class="btn btn-ghost" onclick="clearFilters()" style="font-size:var(--text-xs)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:13px;height:13px"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          Reset
+        </button>
+      </div>
 
-<!-- TAB FLOTTA -->
-<div class="tab-pane" id="tab-flotta">
-  <div class="panel">
-    <h2>Lista flotta — elicotteri manutenzione Colico</h2>
-    <div class="toolbar">
-      <button class="btn btn-success" id="btnAddHeli2">+ Aggiungi</button>
-      <input type="text" id="searchFleet" placeholder="Cerca matricola, MSN, modello..."
-        style="background:#0f172a;border:1px solid var(--border);color:#fff;
-          padding:9px 13px;border-radius:9px;font:inherit;min-width:260px;"/>
-    </div>
-    <div class="table-wrap">
-      <table>
-        <thead><tr><th>Matricola</th><th>MSN</th><th>Modello</th><th>Stato</th><th>In hangar</th><th>Azioni</th></tr></thead>
-        <tbody id="fleetBody"></tbody>
-      </table>
-    </div>
-  </div>
-</div>
+      <div class="section-hdr">
+        <div class="section-title">Registro Difetti</div>
+        <div class="section-actions">
+          <span style="font-size:var(--text-xs);color:var(--color-text-muted)" id="table-count"></span>
+          <button class="btn btn-ghost" onclick="exportCSV()" style="font-size:var(--text-xs)">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:13px;height:13px"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            Export CSV
+          </button>
+        </div>
+      </div>
 
-</div><!-- /app -->
-
-<!-- DIALOG BAIA -->
-<dialog id="bayDlg">
-  <div class="mh">
-    <h2 id="bdTitle">Dettagli baia</h2>
-    <button class="close-x" onclick="document.getElementById('bayDlg').close()">✕</button>
-  </div>
-  <div class="mb" id="bdBody"></div>
-  <div class="mf">
-    <button class="btn btn-ghost" onclick="document.getElementById('bayDlg').close()">Chiudi</button>
-  </div>
-</dialog>
-
-<!-- DIALOG AGGIUNGI ELICOTTERO -->
-<dialog id="addDlg">
-  <div class="mh">
-    <h2>Aggiungi elicottero</h2>
-    <button class="close-x" onclick="document.getElementById('addDlg').close()">✕</button>
-  </div>
-  <div class="mb">
-    <div class="form-grid">
-      <div class="field"><label>Matricola</label><input id="addReg" placeholder="Es. I-TEST"/></div>
-      <div class="field"><label>MSN</label><input id="addMsn" placeholder="Es. 31999"/></div>
-      <div class="field"><label>Modello</label><select id="addModel"></select></div>
-      <div class="field"><label>Stato</label>
-        <select id="addStato">
-          <option>disponibile</option><option>in manutenzione</option>
-          <option>in attesa materiali</option><option>fuori servizio</option>
-        </select>
+      <div class="table-wrap">
+        <table class="data-table">
+          <thead><tr>
+            <th onclick="sortBy('id')">ID <span class="sort-icon">↕</span></th>
+            <th onclick="sortBy('ac')">A/C <span class="sort-icon">↕</span></th>
+            <th onclick="sortBy('ata')">ATA <span class="sort-icon">↕</span></th>
+            <th onclick="sortBy('desc')">Descrizione <span class="sort-icon">↕</span></th>
+            <th onclick="sortBy('prio')">Priorità <span class="sort-icon">↕</span></th>
+            <th onclick="sortBy('status')">Stato <span class="sort-icon">↕</span></th>
+            <th onclick="sortBy('date_open')">Apertura <span class="sort-icon">↕</span></th>
+            <th onclick="sortBy('mel')">MEL/DDM <span class="sort-icon">↕</span></th>
+            <th>Azioni</th>
+          </tr></thead>
+          <tbody id="main-table-body"></tbody>
+        </table>
+        <div id="empty-table" class="empty-state" style="display:none">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+          <h3>Nessun difetto trovato</h3>
+          <p>Modifica i filtri o aggiungi un nuovo difetto.</p>
+        </div>
       </div>
     </div>
+
+    <!-- ── RECURRENCE VIEW ──────────────────────────────────── -->
+    <div id="view-recurrence" style="display:none">
+      <div class="section-hdr">
+        <div class="section-title">Analisi Difetti Ripetitivi</div>
+        <span style="font-size:var(--text-xs);color:var(--color-text-muted)">Difetti con ≥2 occorrenze nello stesso A/C o sistema ATA</span>
+      </div>
+      <div id="recurrence-content"></div>
+    </div>
+
+
+    <!-- ── FLEET VIEW ──────────────────────────────────────── -->
+    <div id="view-fleet" style="display:none">
+      <div class="section-hdr">
+        <div class="section-title">Gestione Flotta</div>
+        <div class="section-actions">
+          <span style="font-size:var(--text-xs);color:var(--color-text-muted)" id="fleet-count"></span>
+          <button class="btn btn-primary" onclick="openNewAC()">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:14px;height:14px"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            Aggiungi Aeromobile
+          </button>
+        </div>
+      </div>
+      <div id="fleet-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(min(340px,100%),1fr));gap:var(--space-4)"></div>
+    </div>
+
+  </div><!-- /content -->
+</div><!-- /main -->
+
+<!-- ═══ MODAL NEW/EDIT DEFECT ═════════════════════════════════════════ -->
+<div id="modal-overlay">
+  <div class="modal" role="dialog" aria-modal="true">
+    <div class="modal-header">
+      <div class="modal-title" id="modal-title">Nuovo Difetto</div>
+      <button class="modal-close" onclick="closeModal()" aria-label="Chiudi">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body" id="modal-body"></div>
+    <div class="modal-footer" id="modal-footer"></div>
   </div>
-  <div class="mf">
-    <button class="btn btn-ghost" onclick="document.getElementById('addDlg').close()">Annulla</button>
-    <button class="btn btn-success" id="saveAddBtn">Salva</button>
-  </div>
-</dialog>
+</div>
+
+<!-- ═══ TOAST ════════════════════════════════════════════════════════ -->
+<div id="toast">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+  <span id="toast-msg"></span>
+</div>
+
 <script>
-// ============================================================
-// COSTANTI
-// ============================================================
-const SK = 'hangarPlanner_v5';
-
-const MODELS = ['AW139','AW169','AW109','H145','H145D3'];
-
-const BAY_NAMES = ['BAIA 1','BAIA 2','BAIA 3','BAIA 4','BAIA 5','BAIA 6','BAIA 7'];
-
-// Opzioni blocco principale — menu a tendina
-const BLOCCO_OPTIONS = [
-  { value:'',           label:'-- nessun blocco --',   cls:'prob-nessuno' },
-  { value:'forza',      label:'1 – Forza lavoro',       cls:'prob-forza'   },
-  { value:'materiali',  label:'2 – Materiali non a magazzino', cls:'prob-materiali' },
-  { value:'logistica',  label:'3 – Logistica',          cls:'prob-logistica'},
-  { value:'difetti',    label:'4 – Difetti superiori alla media', cls:'prob-difetti' }
+// ─── DATA LAYER ──────────────────────────────────────────────────────
+let defects = [
+  {id:'DEF-001',ac:'I-AVIE',type:'AW139',ata:'71',ata_desc:'Power Plant',desc:'Vibrazione anomala al motore n.1 — parametri FDR in range limite',prio:'Alta',status:'In Lavorazione',date_open:'2026-06-01',date_close:null,mel:true,mel_ref:'MEL 71-01A',wo:'WO-4421',pn_affected:'3410100-1',sn_affected:'AW139-E1-05221',reported_by:'M. Brizzi',action_taken:'Installato accelerometro temporaneo. Analisi vibrazioni in corso con Eng.',notes:'Occorrenza precedente su stesso motore: vedi DEF-085 (2025-11-12).',history:[{t:'2026-06-01 08:30',u:'M. Brizzi',e:'Difetto aperto. Pianificato check vibrazioni.'},{t:'2026-06-03 14:00',u:'Eng. Office',e:'Analisi richiesta a AgustaWestland. TR aperto.'}]},
+  {id:'DEF-002',ac:'I-AVIF',type:'AW139',ata:'32',ata_desc:'Landing Gear',desc:'WARNNG LAMP "GEAR NOT DOWN" intermittente durante approccio',prio:'AOG',status:'Aperto',date_open:'2026-06-18',date_close:null,mel:false,mel_ref:'',wo:'WO-4455',pn_affected:'3903030-7',sn_affected:'AW139-LG-1883',reported_by:'Pilota',action_taken:'A/C ferma a terra. Troubleshooting avviato.',notes:'AOG — operazioni sospese.',history:[{t:'2026-06-18 07:15',u:'Pilota',e:'Segnalazione post-flight.'},{t:'2026-06-18 09:00',u:'M. Brizzi',e:'WO aperta. A/C in AOG. Tecnico allocato.'}]},
+  {id:'DEF-003',ac:'I-EMSA',type:'AW169',ata:'21',ata_desc:'Air Conditioning',desc:'Ventilazione cabina insufficiente — temperatura non raggiunta',prio:'Bassa',status:'Differito',date_open:'2026-06-05',date_close:null,mel:true,mel_ref:'MEL 21-03B',wo:'WO-4398',pn_affected:'40701-070-1',sn_affected:'AW169-AC-0441',reported_by:'Crew',action_taken:'Monitoraggio in corso. Pianificato intervento al prossimo check.',notes:'Differito MEL — prossimo check 50h.',history:[{t:'2026-06-05 15:00',u:'Crew',e:'Segnalazione post-missione.'},{t:'2026-06-06 09:00',u:'M. Brizzi',e:'Valutato MEL 21-03B applicabile. Differito.'}]},
+  {id:'DEF-004',ac:'I-EMSB',type:'BK117-D2',ata:'29',ata_desc:'Hydraulic Power',desc:'Livello olio idraulico sotto MIN — perdita lenta non localizzata',prio:'Alta',status:'In Lavorazione',date_open:'2026-06-10',date_close:null,mel:false,mel_ref:'',wo:'WO-4410',pn_affected:'MBB-HYD-29-110',sn_affected:'BK117-HYD-0992',reported_by:'AME Rossi',action_taken:'Visual inspection completa. Leak check con UV lamp schedulato.',notes:'2a occorrenza del mese. Vedi DEF-089.',history:[{t:'2026-06-10 11:00',u:'AME Rossi',e:'Rilevato durante daily check.'},{t:'2026-06-11 10:00',u:'M. Brizzi',e:'Coordinato leak check specialistico.'}]},
+  {id:'DEF-005',ac:'I-AVIE',type:'AW139',ata:'71',ata_desc:'Power Plant',desc:'ENG 2 — TQ split superiore a 5% in hover OEI training',prio:'Media',status:'Chiuso',date_open:'2026-05-20',date_close:'2026-05-28',mel:false,mel_ref:'',wo:'WO-4380',pn_affected:'1001108-1',sn_affected:'AW139-E2-03112',reported_by:'Pilota',action_taken:'Richiamato FADEC. Parametri rientrati in specifica dopo reset.',notes:'Risolto.',history:[{t:'2026-05-20 13:00',u:'Pilota',e:'Segnalazione.'},{t:'2026-05-28 09:00',u:'AME Ferrari',e:'FADEC reset effettuato. Parametri OK. Difetto chiuso.'}]},
+  {id:'DEF-006',ac:'I-AVIF',type:'AW139',ata:'34',ata_desc:'Navigation',desc:'GPS2 intermittente — loss of signal per 10-15 sec in volo',prio:'Media',status:'Aperto',date_open:'2026-06-14',date_close:null,mel:true,mel_ref:'MEL 34-11A',wo:'WO-4440',pn_affected:'822-1966-001',sn_affected:'GPS2-AW139-0211',reported_by:'Pilota',action_taken:'Log scaricato. Analisi in attesa risposta OEM.',notes:'',history:[{t:'2026-06-14 18:00',u:'Pilota',e:'Segnalazione post-flight.'},{t:'2026-06-15 08:30',u:'M. Brizzi',e:'Avviato contatto con Honeywell.'}]},
+  {id:'DEF-007',ac:'I-EMSA',type:'AW169',ata:'21',ata_desc:'Air Conditioning',desc:'ECS FAULT light — codice errore 211 su MFD',prio:'Media',status:'Aperto',date_open:'2026-06-19',date_close:null,mel:true,mel_ref:'MEL 21-05',wo:'WO-4458',pn_affected:'40701-110-2',sn_affected:'AW169-ECS-0553',reported_by:'Crew',action_taken:'Fault isolation in corso.',notes:'Terza occorrenza su I-EMSA per sistema 21.',history:[{t:'2026-06-19 11:00',u:'Crew',e:'Segnalazione.'},{t:'2026-06-20 08:00',u:'M. Brizzi',e:'WO aperta. ATA 21 ripetitivo — escalation a Eng.'}]},
+  {id:'DEF-008',ac:'I-EMSB',type:'BK117-D2',ata:'29',ata_desc:'Hydraulic Power',desc:'HYDRAULIC PRESS LOW warning a terra — check post maint',prio:'Alta',status:'Chiuso',date_open:'2026-06-02',date_close:'2026-06-04',mel:false,mel_ref:'',wo:'WO-4393',pn_affected:'MBB-HYD-29-110',sn_affected:'BK117-HYD-0992',reported_by:'AME Rossi',action_taken:'Ricaricato accumulatore. Pressione OK dopo test.',notes:'Stessa unità DEF-004.',history:[{t:'2026-06-02 09:00',u:'AME Rossi',e:'Warning durante rullaggio.'},{t:'2026-06-04 14:00',u:'AME Rossi',e:'Accumulatore ricaricato. Test OK. Chiuso.'}]},
 ];
 
-// Flotta ufficiale con MSN e modello corretti
-const FLEET_MASTER = [
-  {matricola:'I-SRNT', msn:'31588', modello:'AW139'},
-  {matricola:'I-HECO', msn:'41510', modello:'AW139'},
-  {matricola:'I-TOMS', msn:'31728', modello:'AW139'},
-  {matricola:'I-ROAV', msn:'31739', modello:'AW139'},
-  {matricola:'I-LAQU', msn:'31752', modello:'AW139'},
-  {matricola:'I-TIKE', msn:'31776', modello:'AW139'},
-  {matricola:'I-VLTN', msn:'31778', modello:'AW139'},
-  {matricola:'I-RJAH', msn:'31780', modello:'AW139'},
-  {matricola:'I-MVRK', msn:'31870', modello:'AW139'},
-  {matricola:'C9-HMT', msn:'31619', modello:'AW139'},
-  {matricola:'C9-HMQ', msn:'31576', modello:'AW139'},
-  {matricola:'C9-HMU', msn:'31428', modello:'AW139'},
-  {matricola:'I-RELO', msn:'22179', modello:'AW109'},
-  {matricola:'I-BBPE', msn:'69012', modello:'AW169'},
-  {matricola:'I-BBFI', msn:'69016', modello:'AW169'},
-  {matricola:'I-KYRA', msn:'69045', modello:'AW169'},
-  {matricola:'I-LHCA', msn:'69058', modello:'AW169'},
-  {matricola:'I-KONA', msn:'69071', modello:'AW169'},
-  {matricola:'I-KLIO', msn:'69084', modello:'AW169'},
-  {matricola:'I-SMBA', msn:'69087', modello:'AW169'},
-  {matricola:'I-HERC', msn:'69060', modello:'AW169'},
-  {matricola:'I-PEBX', msn:'20003', modello:'H145'},
-  {matricola:'I-PEBZ', msn:'20009', modello:'H145'},
-  {matricola:'I-ZANL', msn:'20023', modello:'H145'},
-  {matricola:'I-CALA', msn:'20029', modello:'H145'},
-  {matricola:'I-BRXA', msn:'20034', modello:'H145'},
-  {matricola:'I-SUEM', msn:'20036', modello:'H145'},
-  {matricola:'I-LMBD', msn:'20038', modello:'H145'},
-  {matricola:'I-ANKO', msn:'20113', modello:'H145'},
-  {matricola:'I-HFRT', msn:'20114', modello:'H145'},
-  {matricola:'I-PTVR', msn:'20152', modello:'H145'},
-  {matricola:'I-BKUP', msn:'20158', modello:'H145'},
-  {matricola:'I-AHTD', msn:'20155', modello:'H145'},
-  {matricola:'I-SLND', msn:'20181', modello:'H145'},
-  {matricola:'I-SWRS', msn:'20283', modello:'H145'},
-  {matricola:'I-ATLS', msn:'21011', modello:'H145D3'},
-  {matricola:'I-PTAH', msn:'21119', modello:'H145D3'},
-  {matricola:'I-SETH', msn:'21133', modello:'H145D3'},
-  {matricola:'I-HBCR', msn:'21172', modello:'H145D3'},
-  {matricola:'I-ANUB', msn:'21174', modello:'H145D3'},
-  {matricola:'EI-HNH', msn:'21310', modello:'H145D3'},
-  {matricola:'I-HELS', msn:'21460', modello:'H145D3'},
-  {matricola:'I-HEBZ', msn:'21495', modello:'H145D3'}
-];
+let nextId = 9;
+let sortCol = 'date_open';
+let sortDir = 'desc';
+let currentView = 'dashboard';
+let editingId = null;
 
-// ============================================================
-// UTILITY
-// ============================================================
-const rid = () => 'x' + Math.random().toString(36).slice(2,9) + Date.now().toString(36);
-const addH = (d,h) => { const x=new Date(d); x.setHours(x.getHours()+h); return x; };
-const addD = (d,n) => { const x=new Date(d); x.setDate(x.getDate()+n); return x; };
-const fdt  = v => {
-  if(!v) return '--';
-  const d=new Date(v); if(isNaN(d)) return '--';
-  return d.toLocaleString('it-IT',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'});
-};
-const fDur = ms => {
-  if(!ms || ms<=0) return '0h';
-  const h = Math.floor(ms/3600000);
-  const g = Math.floor(h/24), hh = h%24;
-  return g>0 ? g+'g '+hh+'h' : hh+'h';
-};
-const toLDT = iso => {
-  if(!iso) return '';
-  const d=new Date(iso); if(isNaN(d)) return '';
-  const p=n=>String(n).padStart(2,'0');
-  return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate())+'T'+p(d.getHours())+':'+p(d.getMinutes());
-};
-const fromLDT = v => v ? new Date(v).toISOString() : '';
-const norm    = s => (s||'').toLowerCase().trim();
-const dayKey  = d => { const x=new Date(d); return x.getFullYear()+'-'+String(x.getMonth()+1).padStart(2,'0')+'-'+String(x.getDate()).padStart(2,'0'); };
-const msToH   = ms => ms>0 ? +(ms/3600000).toFixed(1) : 0;
+const ATA_CHAPTERS = ['00-General','02-Weight & Balance','05-Time Limits','06-Dimensions','07-Lifting & Shoring','08-Leveling & Weighing','10-Parking & Mooring','12-Servicing','20-Standard Practices','21-Air Conditioning','22-Auto Flight','23-Communications','24-Electrical Power','25-Equipment & Furnishings','26-Fire Protection','27-Flight Controls','28-Fuel','29-Hydraulic Power','30-Ice & Rain Protection','31-Indicating Systems','32-Landing Gear','33-Lights','34-Navigation','35-Oxygen','36-Pneumatics','38-Water & Waste','42-Integrated Modular Avionics','44-Cabin Systems','46-Information Systems','49-APU','52-Doors','53-Fuselage','54-Nacelles & Pylons','55-Stabilizers','56-Windows','57-Wings','60-Standard Practices Rotorcraft','62-Main Rotor','63-Main Rotor Drive','64-Tail Rotor','65-Tail Rotor Drive','67-Rotors Flight Control','71-Power Plant','72-Engine','73-Engine Fuel & Control','74-Ignition','75-Air','76-Engine Controls','77-Engine Indicating','78-Exhaust','79-Oil','80-Starting','96-Special Equipment'];
 
-// ============================================================
-// DATI DEMO
-// ============================================================
-function mkFleet(){
-  return FLEET_MASTER.map(f => ({id:rid(), matricola:f.matricola, msn:f.msn, modello:f.modello, stato:'disponibile'}));
+// ─── VIEW MANAGEMENT ─────────────────────────────────────────────────
+function showView(v){
+  currentView = v;
+  document.querySelectorAll('[id^="view-"]').forEach(el=>el.style.display='none');
+  document.getElementById('view-'+v).style.display='block';
+  document.querySelectorAll('.nav-item').forEach(el=>el.classList.remove('active'));
+  const map={dashboard:0,defects:1,recurrence:2,fleet:null};
+  if(map[v]!==null && map[v]!==undefined) document.querySelectorAll('.nav-item')[map[v]].classList.add('active');
+  else {
+    // fleet: find by text
+    document.querySelectorAll('.nav-item').forEach(el=>{ if(el.textContent.includes('Gestione Flotta')) el.classList.add('active'); });
+  }
+  const titles={dashboard:['Dashboard','Panoramica flotta elisoccorso · Base Colico'],defects:['Registro Difetti','Tutti i difetti aperti, differiti e chiusi'],recurrence:['Analisi Ripetitivi','Pattern difetti su flotta'],fleet:['Gestione Flotta','Aeromobili registrati · flotta elisoccorso']};
+  document.getElementById('topbar-title').textContent=titles[v][0];
+  document.getElementById('topbar-sub').textContent=titles[v][1];
+  if(v==='dashboard') renderDashboard();
+  if(v==='defects') renderTable();
+  if(v==='recurrence') renderRecurrence();
+  if(v==='fleet') renderFleet();
 }
 
-function mkBay(nome, stato, mat, mod, msn, ing, uP, uW, ingEff, uEff, wo, materiali, difetti, sit, blocco, dT, aL, tqte){
-  const toISO = d => d instanceof Date ? d.toISOString() : (d||'');
-  return {
-    id:nome, nome, stato,
-    matricola:mat||'', modello:mod||'', msn:msn||'',
-    // 4 date chiave
-    ingressoPrevisto:toISO(ing),
-    ingressoEffettivo:toISO(ingEff),
-    uscitaPrevista:toISO(uP),
-    uscitaEffettiva:toISO(uEff),
-    uscitaWOIniziale:toISO(uW),
-    wo:wo||'',
-    materiali:materiali||'', difetti:difetti||'',
-    situazioneAttuale:sit||'',
-    bloccoSelezionato:blocco||'',  // valore dal menu a tendina
-    dipendenzeTecniche:!!dT, attesaLogistica:!!aL,
-    tqte:tqte||[], note:''
+function filterAC(ac){
+  document.getElementById('filter-ac').value=ac;
+  renderTable();
+}
+
+// ─── DASHBOARD ───────────────────────────────────────────────────────
+function renderDashboard(){
+  const open=defects.filter(d=>d.status==='Aperto').length;
+  const aog=defects.filter(d=>d.prio==='AOG').length;
+  const prog=defects.filter(d=>d.status==='In Lavorazione').length;
+  const mel=defects.filter(d=>d.mel&&d.status!=='Chiuso').length;
+  const deferred=defects.filter(d=>d.status==='Differito').length;
+  const total=defects.filter(d=>d.status!=='Chiuso').length;
+  document.getElementById('badge-open').textContent=open;
+
+  document.getElementById('kpi-grid').innerHTML=`
+    <div class="kpi-card kpi-accent-error">
+      <div class="kpi-label">Difetti Aperti</div>
+      <div class="kpi-value">${open}</div>
+      <div class="kpi-delta delta-up"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="18 15 12 9 6 15"/></svg>+2 vs settimana prec.</div>
+    </div>
+    <div class="kpi-card kpi-accent-error">
+      <div class="kpi-label">AOG</div>
+      <div class="kpi-value">${aog}</div>
+      <div class="kpi-delta ${aog>0?'delta-up':'delta-dn'}">${aog>0?'⚠ Aeromobili a terra':'✓ Nessun AOG attivo'}</div>
+    </div>
+    <div class="kpi-card kpi-accent-warn">
+      <div class="kpi-label">In Lavorazione</div>
+      <div class="kpi-value">${prog}</div>
+      <div class="kpi-delta delta-neutral">WO attive</div>
+    </div>
+    <div class="kpi-card kpi-accent-gold">
+      <div class="kpi-label">MEL Attivi</div>
+      <div class="kpi-value">${mel}</div>
+      <div class="kpi-delta delta-neutral">Differiti su MEL</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">Differiti</div>
+      <div class="kpi-value">${deferred}</div>
+      <div class="kpi-delta delta-neutral">Schedulati check</div>
+    </div>
+    <div class="kpi-card kpi-accent-primary">
+      <div class="kpi-label">Totale Attivi</div>
+      <div class="kpi-value">${total}</div>
+      <div class="kpi-delta delta-neutral">Esclusi chiusi</div>
+    </div>
+  `;
+
+  // ATA bar chart
+  const ataCounts={};
+  defects.filter(d=>d.status!=='Chiuso').forEach(d=>{
+    const k=d.ata+' – '+d.ata_desc;
+    ataCounts[k]=(ataCounts[k]||0)+1;
+  });
+  const sorted=Object.entries(ataCounts).sort((a,b)=>b[1]-a[1]).slice(0,8);
+  const maxC=sorted[0]?sorted[0][1]:1;
+  const colors=['var(--color-primary)','var(--color-warning)','var(--color-error)','var(--color-gold)','var(--color-orange)','var(--color-notification)','var(--color-success)','var(--color-primary-hover)'];
+  document.getElementById('chart-ata').innerHTML=sorted.map(([k,v],i)=>`
+    <div class="bar-item">
+      <div class="bar-label">ATA ${k.split(' ')[0]}</div>
+      <div class="bar-track"><div class="bar-fill" style="width:${(v/maxC)*100}%;background:${colors[i%colors.length]}"></div></div>
+      <div class="bar-count">${v}</div>
+    </div>
+  `).join('')||'<div style="color:var(--color-text-faint);font-size:var(--text-xs);text-align:center;padding:var(--space-4)">Nessun dato</div>';
+
+  // Donut
+  const statusCounts={Aperto:0,'In Lavorazione':0,Differito:0,Chiuso:0};
+  defects.forEach(d=>{ if(statusCounts[d.status]!==undefined) statusCounts[d.status]++; });
+  const donutColors={Aperto:'var(--color-error)','In Lavorazione':'var(--color-gold)',Differito:'var(--color-orange)',Chiuso:'var(--color-success)'};
+  const total2=Object.values(statusCounts).reduce((a,b)=>a+b,0)||1;
+  let angle=0;const r=45,cx=60,cy=60;
+  let paths='';
+  Object.entries(statusCounts).forEach(([s,v])=>{
+    if(!v) return;
+    const slice=(v/total2)*360;
+    const startRad=angle*Math.PI/180;
+    const endRad=(angle+slice)*Math.PI/180;
+    const x1=cx+r*Math.cos(startRad-Math.PI/2);
+    const y1=cy+r*Math.sin(startRad-Math.PI/2);
+    const x2=cx+r*Math.cos(endRad-Math.PI/2);
+    const y2=cy+r*Math.sin(endRad-Math.PI/2);
+    const large=slice>180?1:0;
+    paths+=`<path d="M${cx} ${cy} L${x1} ${y1} A${r} ${r} 0 ${large} 1 ${x2} ${y2} Z" fill="${donutColors[s]}" opacity=".85"/>`;
+    angle+=slice;
+  });
+  document.getElementById('donut-svg').innerHTML=paths+`<circle cx="${cx}" cy="${cy}" r="24" fill="var(--color-surface)"/>`;
+  document.getElementById('donut-legend').innerHTML=Object.entries(statusCounts).map(([s,v])=>`
+    <div class="legend-item"><div class="legend-dot" style="background:${donutColors[s]}"></div>${s}: <b>${v}</b></div>
+  `).join('');
+
+  // AOG table
+  const aogD=defects.filter(d=>d.prio==='AOG'||d.status==='Aperto');
+  const aogBody=document.getElementById('aog-table-body');
+  aogBody.innerHTML=aogD.length?aogD.map(d=>`
+    <tr onclick="showDetail('${d.id}')">
+      <td><span style="font-family:var(--font-mono);font-size:var(--text-xs);color:var(--color-primary)">${d.id}</span></td>
+      <td><span class="ac-tag">${d.ac}</span></td>
+      <td><span class="ata-tag">${d.ata}</span></td>
+      <td style="max-width:280px">${d.desc}</td>
+      <td>${statusBadge(d.status)}</td>
+      <td style="font-size:var(--text-xs);color:var(--color-text-muted)">${d.date_open}</td>
+    </tr>
+  `).join(''):`<tr><td colspan="6"><div class="empty-state" style="padding:var(--space-6)"><p>Nessun difetto critico attivo. ✓</p></div></td></tr>`;
+}
+
+// ─── TABLE ───────────────────────────────────────────────────────────
+function getFiltered(){
+  const q=(document.getElementById('search-input')?.value||'').toLowerCase();
+  const fac=document.getElementById('filter-ac')?.value||'';
+  const fata=document.getElementById('filter-ata')?.value||'';
+  const fst=document.getElementById('filter-status')?.value||'';
+  const fp=document.getElementById('filter-prio')?.value||'';
+  return defects.filter(d=>{
+    if(q&&!d.desc.toLowerCase().includes(q)&&!d.id.toLowerCase().includes(q)&&!d.pn_affected.toLowerCase().includes(q)&&!d.sn_affected.toLowerCase().includes(q)) return false;
+    if(fac&&d.ac!==fac) return false;
+    if(fata&&d.ata!==fata) return false;
+    if(fst&&d.status!==fst) return false;
+    if(fp&&d.prio!==fp) return false;
+    return true;
+  });
+}
+
+function renderTable(){
+  populateATAFilter();
+  const data=getFiltered().sort((a,b)=>{
+    let va=a[sortCol],vb=b[sortCol];
+    if(typeof va==='string') va=va.toLowerCase(),vb=vb.toLowerCase();
+    if(va<vb) return sortDir==='asc'?-1:1;
+    if(va>vb) return sortDir==='asc'?1:-1;
+    return 0;
+  });
+  const tbody=document.getElementById('main-table-body');
+  document.getElementById('table-count').textContent=data.length+' difetti';
+  document.getElementById('empty-table').style.display=data.length?'none':'flex';
+  tbody.innerHTML=data.map(d=>`
+    <tr onclick="showDetail('${d.id}')">
+      <td><span style="font-family:var(--font-mono);font-size:var(--text-xs);color:var(--color-primary)">${d.id}</span></td>
+      <td><span class="ac-tag">${d.ac}</span> <span style="font-size:10px;color:var(--color-text-muted)">${d.type}</span></td>
+      <td><span class="ata-tag">${d.ata}</span> <span style="font-size:10px;color:var(--color-text-muted)">${d.ata_desc}</span></td>
+      <td style="max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${d.desc}">${d.desc}</td>
+      <td>${prioBadge(d.prio)}</td>
+      <td>${statusBadge(d.status)}</td>
+      <td style="font-size:var(--text-xs);color:var(--color-text-muted);font-variant-numeric:tabular-nums">${d.date_open}</td>
+      <td>${d.mel?`<span class="badge badge-mel"><span class="badge-dot"></span>${d.mel_ref||'MEL'}</span>`:'<span style="color:var(--color-text-faint);font-size:10px">—</span>'}</td>
+      <td onclick="event.stopPropagation()">
+        <div style="display:flex;gap:var(--space-1)">
+          <button class="btn btn-ghost" style="padding:2px 8px;font-size:10px" onclick="editDefect('${d.id}')">Modifica</button>
+          <button class="btn btn-danger" style="padding:2px 8px;font-size:10px;background:var(--color-error-hl);color:var(--color-error)" onclick="deleteDefect('${d.id}')">Elimina</button>
+        </div>
+      </td>
+    </tr>
+  `).join('');
+}
+
+function populateATAFilter(){
+  const sel=document.getElementById('filter-ata');
+  if(!sel) return;
+  const cur=sel.value;
+  const atas=[...new Set(defects.map(d=>d.ata))].sort();
+  sel.innerHTML='<option value="">Tutti ATA</option>'+atas.map(a=>`<option ${a===cur?'selected':''}>${a}</option>`).join('');
+}
+
+function sortBy(col){
+  if(sortCol===col) sortDir=sortDir==='asc'?'desc':'asc';
+  else{sortCol=col;sortDir='asc';}
+  document.querySelectorAll('.data-table th').forEach(th=>{th.classList.remove('sorted');if(th.textContent.includes(col)) th.classList.add('sorted');});
+  renderTable();
+}
+
+function clearFilters(){
+  document.getElementById('search-input').value='';
+  document.getElementById('filter-ac').value='';
+  document.getElementById('filter-ata').value='';
+  document.getElementById('filter-status').value='';
+  document.getElementById('filter-prio').value='';
+  renderTable();
+}
+
+// ─── RECURRENCE ──────────────────────────────────────────────────────
+function renderRecurrence(){
+  const byATA={};
+  defects.forEach(d=>{
+    const k=d.ata+'|'+d.ata_desc;
+    if(!byATA[k]) byATA[k]=[];
+    byATA[k].push(d);
+  });
+  const repeaters=Object.entries(byATA).filter(([,v])=>v.length>=2).sort((a,b)=>b[1].length-a[1].length);
+  if(!repeaters.length){
+    document.getElementById('recurrence-content').innerHTML='<div class="empty-state"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><polyline points="20 6 9 17 4 12"/></svg><h3>Nessun difetto ripetitivo rilevato</h3><p>Buono stato della flotta!</p></div>';
+    return;
+  }
+  document.getElementById('recurrence-content').innerHTML=repeaters.map(([k,defs])=>{
+    const [ata,ataDesc]=k.split('|');
+    const acGroups={};
+    defs.forEach(d=>{if(!acGroups[d.ac])acGroups[d.ac]=[];acGroups[d.ac].push(d);});
+    return `
+      <div class="chart-card" style="margin-bottom:var(--space-4)">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:var(--space-3)">
+          <div style="display:flex;align-items:center;gap:var(--space-3)">
+            <span class="ata-tag" style="font-size:var(--text-xs)">ATA ${ata}</span>
+            <span style="font-size:var(--text-sm);font-weight:600">${ataDesc}</span>
+          </div>
+          <span class="badge badge-open">${defs.length} occorrenze</span>
+        </div>
+        <div class="table-wrap">
+          <table class="data-table">
+            <thead><tr><th>ID</th><th>A/C</th><th>Descrizione</th><th>Stato</th><th>Data</th></tr></thead>
+            <tbody>${defs.map(d=>`
+              <tr onclick="showDetail('${d.id}')">
+                <td><span style="font-family:var(--font-mono);font-size:var(--text-xs);color:var(--color-primary)">${d.id}</span></td>
+                <td><span class="ac-tag">${d.ac}</span></td>
+                <td style="font-size:var(--text-xs)">${d.desc}</td>
+                <td>${statusBadge(d.status)}</td>
+                <td style="font-size:var(--text-xs);color:var(--color-text-muted)">${d.date_open}</td>
+              </tr>`).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+// ─── MODAL: NEW/EDIT ─────────────────────────────────────────────────
+function openNewDefect(){
+  editingId=null;
+  document.getElementById('modal-title').textContent='Nuovo Difetto';
+  showModal(null);
+}
+
+function editDefect(id){
+  editingId=id;
+  const d=defects.find(x=>x.id===id);
+  document.getElementById('modal-title').textContent='Modifica — '+id;
+  showModal(d);
+}
+
+function showModal(d){
+  const ataOptions=ATA_CHAPTERS.map(a=>{
+    const code=a.split('-')[0].trim();
+    const sel=d&&d.ata===code?'selected':'';
+    return `<option value="${code}" ${sel}>${a}</option>`;
+  }).join('');
+
+  document.getElementById('modal-body').innerHTML=`
+    <div class="form-grid">
+      <div class="form-field">
+        <label class="form-label">Aeromobile *</label>
+        <select class="form-select" id="f-ac" onchange="(function(){const a=fleet.find(x=>x.reg===this.value);if(a&&document.getElementById('f-type'))document.getElementById('f-type').value=a.model}).call(this)">
+          ${getACOptionsForModal(d?.ac||'')}
+        </select>
+      </div>
+      <div class="form-field">
+        <label class="form-label">Tipo A/C</label>
+        <input class="form-input" id="f-type" readonly style="background:var(--color-surface-dynamic);cursor:not-allowed" value="${getACType(d?.ac||'')||d?.type||''}">
+      </div>
+      <div class="form-field">
+        <label class="form-label">Capitolo ATA *</label>
+        <select class="form-select" id="f-ata" onchange="updateAtaDesc()">${ataOptions}</select>
+      </div>
+      <div class="form-field">
+        <label class="form-label">Descrizione ATA</label>
+        <input class="form-input" id="f-ata-desc" readonly value="${d?.ata_desc||''}">
+      </div>
+      <div class="form-field span2">
+        <label class="form-label">Descrizione Difetto *</label>
+        <textarea class="form-textarea" id="f-desc" placeholder="Descrivi il difetto in dettaglio...">${d?.desc||''}</textarea>
+      </div>
+      <div class="form-field">
+        <label class="form-label">Part Number (P/N)</label>
+        <input class="form-input" id="f-pn" placeholder="es. 3410100-1" value="${d?.pn_affected||''}">
+      </div>
+      <div class="form-field">
+        <label class="form-label">Serial Number (S/N)</label>
+        <input class="form-input" id="f-sn" placeholder="es. AW139-E1-05221" value="${d?.sn_affected||''}">
+      </div>
+      <div class="form-field">
+        <label class="form-label">Work Order (WO)</label>
+        <input class="form-input" id="f-wo" placeholder="WO-XXXX" value="${d?.wo||''}">
+      </div>
+      <div class="form-field">
+        <label class="form-label">Segnalato da</label>
+        <input class="form-input" id="f-reported" placeholder="Nome cognome / ruolo" value="${d?.reported_by||''}">
+      </div>
+      <div class="form-field">
+        <label class="form-label">Priorità *</label>
+        <select class="form-select" id="f-prio">
+          <option ${d?.prio==='AOG'?'selected':''}>AOG</option>
+          <option ${d?.prio==='Alta'?'selected':''}>Alta</option>
+          <option ${(!d||d?.prio==='Media')?'selected':''}>Media</option>
+          <option ${d?.prio==='Bassa'?'selected':''}>Bassa</option>
+        </select>
+      </div>
+      <div class="form-field">
+        <label class="form-label">Stato *</label>
+        <select class="form-select" id="f-status">
+          <option ${(!d||d?.status==='Aperto')?'selected':''}>Aperto</option>
+          <option ${d?.status==='In Lavorazione'?'selected':''}>In Lavorazione</option>
+          <option ${d?.status==='Differito'?'selected':''}>Differito</option>
+          <option ${d?.status==='Chiuso'?'selected':''}>Chiuso</option>
+        </select>
+      </div>
+      <div class="form-field">
+        <label class="form-label">MEL Applicabile</label>
+        <select class="form-select" id="f-mel">
+          <option value="no" ${!d?.mel?'selected':''}>No</option>
+          <option value="yes" ${d?.mel?'selected':''}>Sì</option>
+        </select>
+      </div>
+      <div class="form-field">
+        <label class="form-label">Riferimento MEL</label>
+        <input class="form-input" id="f-mel-ref" placeholder="es. MEL 21-03B" value="${d?.mel_ref||''}">
+      </div>
+      <div class="form-field">
+        <label class="form-label">Data Apertura *</label>
+        <input class="form-input" type="date" id="f-date" value="${d?.date_open||new Date().toISOString().split('T')[0]}">
+      </div>
+      <div class="form-field">
+        <label class="form-label">Data Chiusura</label>
+        <input class="form-input" type="date" id="f-date-close" value="${d?.date_close||''}">
+      </div>
+      <div class="form-field span2">
+        <label class="form-label">Azioni Intraprese</label>
+        <textarea class="form-textarea" id="f-action" placeholder="Descrivi le azioni eseguite o pianificate...">${d?.action_taken||''}</textarea>
+      </div>
+      <div class="form-field span2">
+        <label class="form-label">Note</label>
+        <textarea class="form-textarea" id="f-notes" style="min-height:60px" placeholder="Note aggiuntive, riferimenti, ecc.">${d?.notes||''}</textarea>
+      </div>
+    </div>
+  `;
+
+  document.getElementById('modal-footer').innerHTML=`
+    <button class="btn btn-ghost" onclick="closeModal()">Annulla</button>
+    <button class="btn btn-primary" onclick="saveDefect()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+      ${editingId?'Salva Modifiche':'Crea Difetto'}
+    </button>
+  `;
+
+  document.getElementById('modal-overlay').classList.add('open');
+  updateAtaDesc();
+}
+
+function updateAtaDesc(){
+  const sel=document.getElementById('f-ata');
+  if(!sel) return;
+  const code=sel.value;
+  const chapter=ATA_CHAPTERS.find(a=>a.startsWith(code+'-')||a.startsWith(code+' '));
+  const desc=chapter?chapter.split(/[-–]/)[1]?.trim()||chapter:'';
+  document.getElementById('f-ata-desc').value=desc;
+}
+
+function saveDefect(){
+  const ata=document.getElementById('f-ata').value;
+  const ataDesc=document.getElementById('f-ata-desc').value;
+  const desc=document.getElementById('f-desc').value.trim();
+  if(!desc){alert('Inserire una descrizione del difetto.');return;}
+  const mel=document.getElementById('f-mel').value==='yes';
+  const data={
+    ac:document.getElementById('f-ac').value,
+    type:document.getElementById('f-type').value,
+    ata,ata_desc:ataDesc,desc,
+    pn_affected:document.getElementById('f-pn').value,
+    sn_affected:document.getElementById('f-sn').value,
+    wo:document.getElementById('f-wo').value,
+    reported_by:document.getElementById('f-reported').value,
+    prio:document.getElementById('f-prio').value,
+    status:document.getElementById('f-status').value,
+    mel,mel_ref:document.getElementById('f-mel-ref').value,
+    date_open:document.getElementById('f-date').value,
+    date_close:document.getElementById('f-date-close').value||null,
+    action_taken:document.getElementById('f-action').value,
+    notes:document.getElementById('f-notes').value,
   };
-}
-
-function demoBays(){
-  const n=new Date();
-  return [
-    mkBay('BAIA 1','occupata','I-SRNT','AW139','31588',
-      addH(n,-54),addH(n,-6),addH(n,-12),addH(n,-54),'',
-      'WO 12345','kit idraulico non a magazzino','fuel indication intermittent ATA28',
-      'Attesa kit idraulico. Task ATA28 in corso. Materiale in ordine.',
-      'materiali',true,false,
-      [{id:rid(),tipo:'TQ',numero:'TQ-2024-0482',titolo:'Fuel indication intermittent ATA28',stato:'aperta',priorita:'alta',data:'2024-03-01'},
-       {id:rid(),tipo:'TE',numero:'TE-2024-1104',titolo:'Attesa kit idraulico braccio SX',stato:'aperta',priorita:'media',data:'2024-03-10'}]),
-
-    mkBay('BAIA 2','occupata','I-HECO','AW139','41510',
-      addH(n,-20),addH(n,10),addH(n,6),addH(n,-20),'',
-      'WO 12346','ok','nessun difetto critico','Lavori in corso. ETA uscita rispettata.',
-      '',false,false,[]),
-
-    mkBay('BAIA 3','prenotata','I-TOMS','AW139','31728',
-      addH(n,5),addH(n,32),addH(n,28),null,'',
-      'WO 12347','consumabili filtro olio in transito','difetti minori','Ingresso pianificato domani.',
-      'logistica',false,true,
-      [{id:rid(),tipo:'TQ',numero:'TQ-2024-0390',titolo:'Consumabili filtro olio',stato:'in lavorazione',priorita:'bassa',data:'2024-02-20'}]),
-
-    mkBay('BAIA 4','libera','','','',null,null,null,null,'','','','','','',false,false,[]),
-
-    mkBay('BAIA 5','in attesa','C9-HMT','AW139','31619',
-      addH(n,-3),addH(n,40),addH(n,36),addH(n,-3),'',
-      'WO 12348','ok','attesa ispezione supplementare',
-      'Fermo per risposta documentale. Ispezione supplementare richiesta.',
-      'logistica',false,true,
-      [{id:rid(),tipo:'TE',numero:'TE-2024-2210',titolo:'Ispezione supplementare',stato:'aperta',priorita:'alta',data:'2024-03-12'}]),
-
-    mkBay('BAIA 6','occupata','I-ROAV','AW139','31739',
-      addH(n,-100),addH(n,-30),addH(n,-40),addH(n,-100),'',
-      'WO 12349','ok','difetti superiori alla media — gearbox task concatenati',
-      'Ritardo per task gearbox. Task B dipende da A non concluso.',
-      'difetti',true,false,
-      [{id:rid(),tipo:'TQ',numero:'TQ-2024-0501',titolo:'Gearbox task B dipendente da A',stato:'aperta',priorita:'alta',data:'2024-03-05'}]),
-
-    mkBay('BAIA 7','libera','','','',null,null,null,null,'','','','','','',false,false,[])
-  ];
-}
-
-function demoMov(){
-  const n=new Date();
-  return [
-    {id:rid(),timestamp:addD(n,-6).toISOString(),tipo:'IN',baia:'BAIA 1',matricola:'I-SRNT',dettaglio:'Ingresso WO 12345'},
-    {id:rid(),timestamp:addD(n,-6).toISOString(),tipo:'IN',baia:'BAIA 6',matricola:'I-ROAV',dettaglio:'Ingresso task gearbox'},
-    {id:rid(),timestamp:addD(n,-5).toISOString(),tipo:'IN',baia:'BAIA 2',matricola:'I-HECO',dettaglio:'Ingresso WO 12346'},
-    {id:rid(),timestamp:addD(n,-4).toISOString(),tipo:'OUT',baia:'BAIA 7',matricola:'I-KYRA',dettaglio:'Rilascio'},
-    {id:rid(),timestamp:addD(n,-3).toISOString(),tipo:'OUT',baia:'BAIA 3',matricola:'I-BBFI',dettaglio:'Uscita completamento'},
-    {id:rid(),timestamp:addD(n,-2).toISOString(),tipo:'IN',baia:'BAIA 5',matricola:'C9-HMT',dettaglio:'Ingresso attesa documentale'},
-    {id:rid(),timestamp:addD(n,-1).toISOString(),tipo:'BOOK',baia:'BAIA 3',matricola:'I-TOMS',dettaglio:'Prenotazione'}
-  ];
-}
-
-function demoHist(){
-  const data={}, n=new Date();
-  for(let i=364;i>=0;i--){
-    const k=dayKey(addD(n,-i));
-    data[k]=Math.min(7,Math.max(1,3+Math.round(2*Math.sin(i/30)+Math.random()*2)));
-  }
-  return data;
-}
-
-function defaultData(){
-  return {fleet:mkFleet(), bays:demoBays(), movements:demoMov(), historicalOccupancy:demoHist()};
-}
-
-// ============================================================
-// STATO GLOBALE — carica da JSON remoto (GitHub Pages)
-// ============================================================
-const JSON_URL = 'hangar_data.json';
-
-let A = {};
-let CH = {};
-
-async function initApp() {
-  try {
-    const res = await fetch(JSON_URL + '?t=' + Date.now());
-    if (!res.ok) throw new Error('Fetch fallito');
-    const data = await res.json();
-    if (data && data.fleet && data.bays) {
-      A = data;
-      localStorage.setItem(SK, JSON.stringify(A));
-    } else {
-      throw new Error('Struttura JSON non valida');
+  if(editingId){
+    const idx=defects.findIndex(d=>d.id===editingId);
+    if(idx>=0){
+      data.id=editingId;
+      data.history=defects[idx].history||[];
+      const now=new Date().toISOString().replace('T',' ').slice(0,16);
+      data.history.push({t:now,u:'M. Brizzi',e:'Difetto aggiornato.'});
+      defects[idx]=data;
     }
-  } catch(e) {
-    console.warn('JSON remoto non disponibile, uso localStorage:', e);
-    try {
-      const r = localStorage.getItem(SK);
-      if (r) { const p = JSON.parse(r); if (p && p.fleet && p.bays) A = p; }
-    } catch(e2) {}
-    if (!A.fleet) { A = defaultData(); localStorage.setItem(SK, JSON.stringify(A)); }
+    toast('Difetto aggiornato ✓');
+  } else {
+    data.id='DEF-'+String(nextId++).padStart(3,'0');
+    data.history=[{t:new Date().toISOString().replace('T',' ').slice(0,16),u:'M. Brizzi',e:'Difetto aperto.'}];
+    defects.push(data);
+    toast('Nuovo difetto registrato ✓');
   }
-  renderAll();
-  startAutoRefresh();
+  closeModal();
+  saveToLocalStorage();
+  if(currentView==='dashboard') renderDashboard();
+  if(currentView==='defects') renderTable();
+  document.getElementById('badge-open').textContent=defects.filter(d=>d.status==='Aperto').length;
 }
 
-function startAutoRefresh() {
-  setInterval(async () => {
-    try {
-      const res = await fetch(JSON_URL + '?t=' + Date.now());
-      if (!res.ok) return;
-      const data = await res.json();
-      if (data && data.fleet && data.bays) {
-        A = data;
-        localStorage.setItem(SK, JSON.stringify(A));
-        renderAll();
-      }
-    } catch(e) {}
-  }, 5 * 60 * 1000);
+function deleteDefect(id){
+  if(!confirm('Eliminare il difetto '+id+'? Questa operazione non è reversibile.')) return;
+  defects=defects.filter(d=>d.id!==id);
+  saveToLocalStorage();
+  renderTable();
+  document.getElementById('badge-open').textContent=defects.filter(d=>d.status==='Aperto').length;
+  toast('Difetto eliminato');
 }
 
-function save(){
-  if(!A.historicalOccupancy) A.historicalOccupancy={};
-  A.historicalOccupancy[dayKey(new Date())] = A.bays.filter(b=>b.stato!=='libera').length;
-  localStorage.setItem(SK, JSON.stringify(A));
+// ─── DETAIL MODAL ────────────────────────────────────────────────────
+function showDetail(id){
+  const d=defects.find(x=>x.id===id);
+  if(!d) return;
+  document.getElementById('modal-title').textContent='Dettaglio — '+id;
+  document.getElementById('modal-body').innerHTML=`
+    <div style="display:flex;gap:var(--space-2);flex-wrap:wrap;margin-bottom:var(--space-4)">
+      ${statusBadge(d.status)} ${prioBadge(d.prio)}
+      ${d.mel?`<span class="badge badge-mel">MEL ${d.mel_ref}</span>`:''}
+    </div>
+    <div class="detail-grid">
+      <div class="detail-field"><div class="detail-key">Aeromobile</div><div class="detail-val"><span class="ac-tag">${d.ac}</span> ${d.type}</div></div>
+      <div class="detail-field"><div class="detail-key">Capitolo ATA</div><div class="detail-val"><span class="ata-tag">${d.ata}</span> ${d.ata_desc}</div></div>
+      <div class="detail-field"><div class="detail-key">Work Order</div><div class="detail-val mono">${d.wo||'—'}</div></div>
+      <div class="detail-field"><div class="detail-key">Segnalato da</div><div class="detail-val">${d.reported_by||'—'}</div></div>
+      <div class="detail-field"><div class="detail-key">Part Number</div><div class="detail-val mono">${d.pn_affected||'—'}</div></div>
+      <div class="detail-field"><div class="detail-key">Serial Number</div><div class="detail-val mono">${d.sn_affected||'—'}</div></div>
+      <div class="detail-field"><div class="detail-key">Data Apertura</div><div class="detail-val">${d.date_open}</div></div>
+      <div class="detail-field"><div class="detail-key">Data Chiusura</div><div class="detail-val">${d.date_close||'In corso'}</div></div>
+    </div>
+    <div class="detail-desc"><b>Descrizione:</b> ${d.desc}</div>
+    ${d.action_taken?`<div class="detail-desc" style="margin-top:var(--space-2)"><b>Azioni:</b> ${d.action_taken}</div>`:''}
+    ${d.notes?`<div class="detail-desc" style="margin-top:var(--space-2);background:var(--color-gold-hl);color:var(--color-gold)"><b>Note:</b> ${d.notes}</div>`:''}
+    <div class="detail-timeline">
+      <div class="detail-key" style="margin-bottom:var(--space-2)">Storico</div>
+      ${(d.history||[]).map(h=>`
+        <div class="timeline-item">
+          <div class="timeline-dot"></div>
+          <div class="timeline-content">
+            <div class="timeline-time">${h.t} · ${h.u}</div>
+            <div class="timeline-text">${h.e}</div>
+          </div>
+        </div>
+      `).join('')}
+    </div>
+  `;
+  document.getElementById('modal-footer').innerHTML=`
+    <button class="btn btn-ghost" onclick="closeModal()">Chiudi</button>
+    <button class="btn btn-primary" onclick="closeModal();editDefect('${id}')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+      Modifica
+    </button>
+  `;
+  document.getElementById('modal-overlay').classList.add('open');
+  editingId=null;
 }
 
-// ============================================================
-// BLOCCO PRINCIPALE — logica
-// ============================================================
-function getBloccoInfo(b){
-  // Prima usa il valore scelto manualmente
-  const sel = b.bloccoSelezionato || '';
-  const found = BLOCCO_OPTIONS.find(o=>o.value===sel);
-  if(found && found.value !== '') return found;
-  return BLOCCO_OPTIONS[0]; // nessun blocco
+function closeModal(){
+  document.getElementById('modal-overlay').classList.remove('open');
 }
 
-function getLast7(){
-  const r=[],n=new Date();
-  for(let i=6;i>=0;i--){
-    const d=addD(n,-i);
-    const s=new Date(d.getFullYear(),d.getMonth(),d.getDate(),0,0,0);
-    const e=new Date(d.getFullYear(),d.getMonth(),d.getDate(),23,59,59,999);
-    r.push({label:s.toLocaleDateString('it-IT',{day:'2-digit',month:'2-digit'}),start:s,end:e});
-  }
-  return r;
+// ─── HELPERS ─────────────────────────────────────────────────────────
+function statusBadge(s){
+  const map={Aperto:'badge-open','In Lavorazione':'badge-progress',Differito:'badge-deferred',Chiuso:'badge-closed'};
+  return `<span class="badge ${map[s]||'badge-open'}"><span class="badge-dot"></span>${s}</span>`;
+}
+function prioBadge(p){
+  const map={AOG:'prio-aog',Alta:'prio-high',Media:'prio-med',Bassa:'prio-low'};
+  return `<span class="priority-chip ${map[p]||'prio-low'}">${p}</span>`;
+}
+function toast(msg){
+  const t=document.getElementById('toast');
+  document.getElementById('toast-msg').textContent=msg;
+  t.classList.add('show');
+  setTimeout(()=>t.classList.remove('show'),3000);
 }
 
-function avgOcc(n){
-  const h=A.historicalOccupancy||{},now=new Date();
-  let sum=0,cnt=0;
-  for(let i=0;i<n;i++){const k=dayKey(addD(now,-i));if(h[k]!==undefined){sum+=h[k];cnt++;}}
-  return cnt?(sum/cnt).toFixed(1):'--';
+function exportCSV(){
+  const data=getFiltered();
+  const headers=['ID','A/C','Tipo','ATA','Desc.ATA','Descrizione','Priorità','Stato','MEL','Rif.MEL','WO','P/N','S/N','Data Apertura','Data Chiusura','Azioni'];
+  const rows=data.map(d=>[d.id,d.ac,d.type,d.ata,d.ata_desc,`"${d.desc}"`,d.prio,d.status,d.mel?'Sì':'No',d.mel_ref,d.wo,d.pn_affected,d.sn_affected,d.date_open,d.date_close||'',`"${d.action_taken}"`]);
+  const csv=[headers,...rows].map(r=>r.join(',')).join('\n');
+  const blob=new Blob([csv],{type:'text/csv;charset=utf-8;'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);
+  a.download='HeliDefects_export_'+new Date().toISOString().slice(0,10)+'.csv';a.click();
+  toast('Export CSV completato ✓');
 }
 
-// KPI calcolati dalle 4 date
-function computeKpi(){
-  const total=7;
-  const occ=A.bays.filter(b=>b.stato==='occupata').length;
-  const free=A.bays.filter(b=>b.stato==='libera').length;
-  const wait=A.bays.filter(b=>b.stato==='prenotata'||b.stato==='in attesa').length;
-  const now=new Date();
-
-  // Ritardi: uscita prevista superata senza uscita effettiva
-  const late=A.bays.filter(b=>b.uscitaPrevista&&b.stato!=='libera'&&now>new Date(b.uscitaPrevista)&&!b.uscitaEffettiva).length;
-
-  // Sosta media prevista vs effettiva (ore) — solo baie con entrambe le date
-  const closed=A.bays.filter(b=>b.ingressoEffettivo&&b.uscitaEffettiva);
-  const avgSostaEff = closed.length
-    ? (closed.reduce((s,b)=>s+msToH(new Date(b.uscitaEffettiva)-new Date(b.ingressoEffettivo)),0)/closed.length).toFixed(1)
-    : '--';
-  const avgSostaPrev = closed.length
-    ? (closed.reduce((s,b)=>{
-        const ip=b.ingressoPrevisto||b.ingressoEffettivo;
-        return s+msToH(new Date(b.uscitaPrevista)-new Date(ip));
-      },0)/closed.length).toFixed(1)
-    : '--';
-
-  const d7=getLast7();
-  const mov7=A.movements.filter(m=>{const t=new Date(m.timestamp).getTime();return t>=d7[0].start.getTime()&&t<=d7[6].end.getTime();}).length;
-  const occ7=d7.map(d=>(A.historicalOccupancy||{})[dayKey(d.start)]??occ);
-  const avg7=(occ7.reduce((a,b)=>a+b,0)/occ7.length).toFixed(1);
-  const tqOpen=A.bays.reduce((s,b)=>s+(b.tqte||[]).filter(t=>t.stato==='aperta').length,0);
-  const blocchiAttivi=A.bays.filter(b=>b.bloccoSelezionato&&b.bloccoSelezionato!=='').length;
-
-  return {total,occ,free,wait,pct:((occ/total)*100).toFixed(1),
-    latePct:((late/total)*100).toFixed(1),late,mov7,avg7,
-    avg3m:avgOcc(90),avg6m:avgOcc(180),avg12m:avgOcc(365),
-    avgSostaEff,avgSostaPrev,tqOpen,blocchiAttivi};
-}
-
-// ============================================================
-// MOVIMENTI
-// ============================================================
-function mkMv(dt,tipo,baia,mat,det){
-  return {id:rid(),timestamp:dt.toISOString(),tipo,baia,matricola:mat,dettaglio:det};
-}
-function regMov(ob,nb){
-  const oldOcc=ob.stato!=='libera'&&ob.matricola, newOcc=nb.stato!=='libera'&&nb.matricola;
-  if(!oldOcc&&newOcc) A.movements.unshift(mkMv(new Date(),'IN',nb.nome,nb.matricola,'Assegnazione '+(nb.wo||'')));
-  else if(oldOcc&&!newOcc) A.movements.unshift(mkMv(new Date(),'OUT',ob.nome,ob.matricola,'Baia liberata'));
-  else if(nb.stato==='prenotata'&&ob.stato!=='prenotata') A.movements.unshift(mkMv(new Date(),'BOOK',nb.nome,nb.matricola||'--','Prenotazione'));
-}
-function clearBay(b){
-  Object.assign(b,{stato:'libera',matricola:'',modello:'',msn:'',
-    ingressoPrevisto:'',ingressoEffettivo:'',uscitaPrevista:'',uscitaEffettiva:'',uscitaWOIniziale:'',
-    wo:'',materiali:'',difetti:'',situazioneAttuale:'',bloccoSelezionato:'',
-    dipendenzeTecniche:false,attesaLogistica:false,tqte:[],note:''});
-}
-</script>
-<script>
-// ============================================================
-// KPI TOP
-// ============================================================
-function renderKpiTop(){
-  const k=computeKpi();
-  document.getElementById('kpiTop').innerHTML=
-    '<div class="kpi-grid" style="margin-bottom:18px;">'+
-    kCard('green','Baie libere',k.free,'di '+k.total+' totali')+
-    kCard('red','Baie occupate',k.occ,k.pct+'% occupazione')+
-    kCard('yellow','In attesa / pren.',k.wait,'')+
-    kCard('orange','In ritardo',k.late,k.latePct+'% baie')+
-    kCard('rose','Blocchi attivi',k.blocchiAttivi,'da menu selezione')+
-    kCard('cyan','TQ/TE aperte',k.tqOpen,'')+
-    '</div>';
-}
-
-function renderKpiFull(){
-  const k=computeKpi();
-  document.getElementById('kpiFull').innerHTML=
-    '<div class="kpi-group-title">Stato baie</div>'+
-    '<div class="kpi-grid">'+
-    kCard('','Totali',k.total,'')+kCard('green','Libere',k.free,'')+
-    kCard('red','Occupate',k.occ,'')+kCard('yellow','In attesa/pren.',k.wait,'')+
-    kCard('orange','% Occupazione',k.pct+'%','')+kCard('red','% In ritardo',k.latePct+'%',k.late+' baie')+
-    '</div>'+
-    '<div class="kpi-group-title">Sosta media (dalle 4 date)</div>'+
-    '<div class="kpi-grid">'+
-    kCard('blue','Sosta prev. media',k.avgSostaPrev+'h','ore medie previste')+
-    kCard('purple','Sosta eff. media',k.avgSostaEff+'h','ore medie effettive')+
-    kCard('cyan','Mov. 7 giorni',k.mov7,'')+kCard('orange','Blocchi attivi',k.blocchiAttivi,'')+
-    '</div>'+
-    '<div class="kpi-group-title">Occupazione storica</div>'+
-    '<div class="kpi-grid">'+
-    kCard('cyan','Media 7 gg',k.avg7,'baie/giorno')+
-    kCard('purple','Media 3 mesi',k.avg3m,'90 gg')+
-    kCard('purple','Media 6 mesi',k.avg6m,'180 gg')+
-    kCard('purple','Media 12 mesi',k.avg12m,'365 gg')+
-    '</div>';
-}
-
-function kCard(cls,lbl,val,sub){
-  return '<div class="kpi-card '+cls+'">'+
-    '<div class="kpi-label">'+lbl+'</div>'+
-    '<div class="kpi-value">'+val+'</div>'+
-    (sub?'<div class="kpi-sub">'+sub+'</div>':'')+
-    '</div>';
-}
-
-// ============================================================
-// RENDER 7 BAIE
-// ============================================================
-function renderBays(){
-  const g=document.getElementById('bayGrid'); g.innerHTML='';
-  A.bays.forEach(b=>{
-    const pr=getBloccoInfo(b);
-    const cls=b.stato==='libera'?'bay-free':b.stato==='occupata'?'bay-occupied':'bay-waiting';
-    const tOpen=(b.tqte||[]).filter(t=>t.stato==='aperta');
-    const div=document.createElement('div');
-    div.className='bay-card '+cls;
-    div.innerHTML=
-      '<div class="bay-title">'+b.nome+'</div>'+
-      '<div class="bay-pill">'+b.stato+'</div>'+
-      '<div class="bay-line"><strong>Matr.</strong> '+(b.matricola||'--')+' <strong style="margin-left:6px;">MSN</strong> '+(b.msn||'--')+'</div>'+
-      '<div class="bay-line"><strong>Modello</strong> '+(b.modello||'--')+'</div>'+
-      '<div class="bay-line"><strong>WO</strong> '+(b.wo||'--')+'</div>'+
-      '<div class="bay-line"><strong>Ingr. prev.</strong> '+fdt(b.ingressoPrevisto)+'</div>'+
-      '<div class="bay-line"><strong>Ingr. eff.</strong> '+fdt(b.ingressoEffettivo)+'</div>'+
-      '<div class="bay-line"><strong>Usc. prev.</strong> '+fdt(b.uscitaPrevista)+'</div>'+
-      '<div class="bay-line"><strong>Usc. eff.</strong> '+fdt(b.uscitaEffettiva)+'</div>'+
-      (b.situazioneAttuale?'<div class="bay-sit">'+b.situazioneAttuale.slice(0,100)+(b.situazioneAttuale.length>100?'…':'')+'</div>':'')+
-      '<div class="bay-badge '+pr.cls+'">'+(pr.value?pr.label:'nessun blocco')+'</div>'+
-      (tOpen.length?'<div class="bay-tqte">'+tOpen.map(t=>t.numero||t.tipo).join(' | ')+'</div>':'');
-    div.addEventListener('click',()=>openBayDlg(b.id));
-    g.appendChild(div);
+// ─── THEME TOGGLE ────────────────────────────────────────────────────
+(function(){
+  const t=document.querySelector('[data-theme-toggle]'),r=document.documentElement;
+  let d='dark'; r.setAttribute('data-theme',d);
+  t&&t.addEventListener('click',()=>{
+    d=d==='dark'?'light':'dark';r.setAttribute('data-theme',d);
+    t.innerHTML=d==='dark'?'<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>':'<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>';
   });
-}
+})();
 
-// ============================================================
-// QUICK BAR
-// ============================================================
-function populateQuickBar(){
-  document.getElementById('qBaia').innerHTML=BAY_NAMES.map(n=>'<option>'+n+'</option>').join('');
-  document.getElementById('qMatricola').innerHTML=
-    '<option value="">-- seleziona --</option>'+
-    A.fleet.sort((a,b)=>a.matricola.localeCompare(b.matricola))
-      .map(h=>'<option value="'+h.matricola+'">'+h.matricola+' – '+h.modello+' ('+h.msn+')</option>').join('');
-}
-
-document.getElementById('qSave').addEventListener('click',()=>{
-  const bayName=document.getElementById('qBaia').value;
-  const mat=document.getElementById('qMatricola').value.trim();
-  const wo=document.getElementById('qWO').value.trim();
-  const usc=document.getElementById('qUscita').value;
-  const stato=document.getElementById('qStato').value;
-  if(!mat){alert('Seleziona un elicottero.');return;}
-  const b=A.bays.find(x=>x.id===bayName);
-  if(!b){return;}
-  const h=A.fleet.find(x=>x.matricola===mat);
-  const ob=Object.assign({},b);
-  b.stato=stato; b.matricola=mat;
-  b.modello=h?h.modello:''; b.msn=h?h.msn:'';
-  if(wo) b.wo=wo;
-  if(!b.ingressoEffettivo) b.ingressoEffettivo=new Date().toISOString();
-  if(!b.ingressoPrevisto) b.ingressoPrevisto=new Date().toISOString();
-  if(usc){ b.uscitaPrevista=fromLDT(usc); if(!b.uscitaWOIniziale) b.uscitaWOIniziale=fromLDT(usc); }
-  regMov(ob,b); save(); renderAll();
-  document.getElementById('qWO').value='';
-  document.getElementById('qUscita').value='';
-  alert(mat+' assegnato a '+bayName+'.');
+// ─── KEYBOARD ────────────────────────────────────────────────────────
+document.addEventListener('keydown',e=>{
+  if(e.key==='Escape') closeModal();
+  if(e.key==='n'&&!e.ctrlKey&&!e.metaKey&&document.activeElement.tagName!=='INPUT'&&document.activeElement.tagName!=='TEXTAREA') openNewDefect();
 });
+document.getElementById('modal-overlay').addEventListener('click',e=>{if(e.target===document.getElementById('modal-overlay')) closeModal();});
 
-// ============================================================
-// DIALOG BAIA DETTAGLI
-// ============================================================
-function tqteHtml(t){
-  return '<div class="tqte-row" id="tr-'+t.id+'">'+
-    '<div class="field"><label>Tipo</label><select class="tq-tipo" data-id="'+t.id+'">'+
-      ['TQ','TE'].map(x=>'<option '+(t.tipo===x?'selected':'')+'>'+x+'</option>').join('')+'</select></div>'+
-    '<div class="field"><label>Prior.</label><select class="tq-prior" data-id="'+t.id+'">'+
-      ['alta','media','bassa'].map(x=>'<option '+(t.priorita===x?'selected':'')+'>'+x+'</option>').join('')+'</select></div>'+
-    '<div class="field"><label>Numero</label><input class="tq-num" data-id="'+t.id+'" value="'+(t.numero||'')+'" placeholder="TQ-2024-0482"/></div>'+
-    '<div class="field" style="grid-column:span 2;"><label>Titolo</label><input class="tq-tit" data-id="'+t.id+'" value="'+(t.titolo||'')+'" placeholder="Descrizione"/></div>'+
-    '<div class="field"><label>Stato</label><select class="tq-stato" data-id="'+t.id+'">'+
-      ['aperta','in lavorazione','chiusa'].map(x=>'<option '+(t.stato===x?'selected':'')+'>'+x+'</option>').join('')+'</select></div>'+
-    '<div class="field"><label>Data</label><input type="date" class="tq-data" data-id="'+t.id+'" value="'+(t.data||'')+'"/></div>'+
-    '<button class="btn btn-danger btn-sm tq-del" data-id="'+t.id+'" style="align-self:end;">✕</button>'+
-    '</div>';
-}
-function readTqte(){
-  return Array.from(document.querySelectorAll('.tqte-row')).map(row=>{
-    const id=row.id.replace('tr-','');
-    return {id,tipo:row.querySelector('.tq-tipo').value,
-      numero:row.querySelector('.tq-num').value.trim(),
-      titolo:row.querySelector('.tq-tit').value.trim(),
-      stato:row.querySelector('.tq-stato').value,
-      priorita:row.querySelector('.tq-prior').value,
-      data:row.querySelector('.tq-data').value};
-  });
-}
-document.addEventListener('click',e=>{
-  if(e.target.classList.contains('tq-del'))
-    document.getElementById('tr-'+e.target.dataset.id).remove();
-});
+// ─── FLEET DATA ──────────────────────────────────────────────────────
+let fleet = [
+  {reg:'I-AVIE',make:'Leonardo',model:'AW139',msn:'31706',year:2014,base:'Colico',role:'HEMS',status:'Operativo',notes:'Motori P&W PT6C-67C. Config. HEMS full.'},
+  {reg:'I-AVIF',make:'Leonardo',model:'AW139',msn:'31742',year:2015,base:'Colico',role:'HEMS',status:'Operativo',notes:''},
+  {reg:'I-EMSA',make:'Leonardo',model:'AW169',msn:'69021',year:2019,base:'Colico',role:'HEMS',status:'Operativo',notes:'Motori P&W PW210A. Versione LUH.'},
+  {reg:'I-EMSB',make:'Airbus Helicopters',model:'BK117-D2',msn:'20219',year:2016,base:'Colico',role:'HEMS',status:'Operativo',notes:'Motori Turbomeca Arriel 2E.'},
+];
+let nextACId = fleet.length;
 
-function openBayDlg(bayId){
-  const b=A.bays.find(x=>x.id===bayId);
-  const pr=getBloccoInfo(b);
-  document.getElementById('bdTitle').textContent=b.nome+' – Dettagli e modifica';
-  const heliOpts=A.fleet.sort((a,z)=>a.matricola.localeCompare(z.matricola))
-    .map(h=>'<option value="'+h.matricola+'" '+(b.matricola===h.matricola?'selected':'')+'>'+
-      h.matricola+' – '+h.modello+' (MSN '+h.msn+')</option>').join('');
+const MAKES = ['Leonardo','Airbus Helicopters'];
+const MODELS_BY_MAKE = {
+  'Leonardo': ['AW139','AW169','AW109'],
+  'Airbus Helicopters': ['BK117-D2','BK117-D3'],
+};
 
-  const bloccoSelectHtml=
-    '<select id="eBlocco" style="width:100%;background:#1a0a0a;border:2px solid #dc2626;'+
-    'border-radius:8px;padding:12px 14px;color:#fff;font:inherit;font-size:15px;font-weight:700;">'+
-    BLOCCO_OPTIONS.map(o=>'<option value="'+o.value+'" '+(b.bloccoSelezionato===o.value?'selected':'')+'>'+o.label+'</option>').join('')+
-    '</select>';
-
-  document.getElementById('bdBody').innerHTML=
-    '<div class="sect">Dati operativi</div>'+
-    '<div class="form-grid">'+
-    '<div class="field"><label>Stato baia</label><select id="eStato">'+
-      ['libera','occupata','prenotata','in attesa'].map(s=>'<option '+(b.stato===s?'selected':'')+'>'+s+'</option>').join('')+'</select></div>'+
-    '<div class="field"><label>Elicottero</label><select id="eMat"><option value="">-- seleziona --</option>'+heliOpts+'</select></div>'+
-    '<div class="field"><label>Modello</label><input id="eMod" value="'+(b.modello||'')+'" readonly style="opacity:.6;cursor:not-allowed;"/></div>'+
-    '<div class="field"><label>MSN</label><input id="eMsn" value="'+(b.msn||'')+'" readonly style="opacity:.6;cursor:not-allowed;"/></div>'+
-    '<div class="field"><label>WO</label><input id="eWO" value="'+(b.wo||'')+'" placeholder="WO 12345"/></div>'+
-    '<div class="field"><label>Note</label><input id="eNote" value="'+(b.note||'')+'"/></div>'+
-    '</div>'+
-
-    // 4 DATE — raggruppate visivamente
-    '<div class="sect">4 Date chiave della sosta</div>'+
-    '<div class="date-group">'+
-    '<div class="date-card green-border">'+
-    '<div class="date-card-title">Ingresso</div>'+
-    '<div class="field"><label>Previsto</label><input type="datetime-local" id="eIngPrev" value="'+toLDT(b.ingressoPrevisto)+'"/></div>'+
-    '<div class="field" style="margin-top:8px;"><label>Effettivo</label><input type="datetime-local" id="eIngEff" value="'+toLDT(b.ingressoEffettivo)+'"/></div>'+
-    '</div>'+
-    '<div class="date-card red-border">'+
-    '<div class="date-card-title">Uscita</div>'+
-    '<div class="field"><label>Prevista</label><input type="datetime-local" id="eUscPrev" value="'+toLDT(b.uscitaPrevista)+'"/></div>'+
-    '<div class="field" style="margin-top:8px;"><label>Effettiva</label><input type="datetime-local" id="eUscEff" value="'+toLDT(b.uscitaEffettiva)+'"/></div>'+
-    '</div>'+
-    '</div>'+
-    '<div class="field" style="margin-top:10px;"><label>Uscita da WO iniziale (riferimento)</label>'+
-    '<input type="datetime-local" id="eUscWO" value="'+toLDT(b.uscitaWOIniziale)+'"/></div>'+
-
-    // BLOCCO PRINCIPALE — menu grande e visibile
-    '<div class="sect">Blocco principale che ferma la manutenzione</div>'+
-    '<div class="blocco-select-wrap"><label>Seleziona il motivo del blocco</label>'+bloccoSelectHtml+'</div>'+
-
-    // SITUAZIONE
-    '<div class="sect">Situazione attuale elicottero</div>'+
-    '<div class="field"><label>Descrizione libera — stato lavori, blocchi, aggiornamenti</label>'+
-    '<textarea id="eSit" style="min-height:85px;">'+(b.situazioneAttuale||'')+'</textarea></div>'+
-
-    // MATERIALI E DIFETTI
-    '<div class="sect">Materiali e difetti</div>'+
-    '<div class="form-grid" style="grid-template-columns:1fr 1fr;">'+
-    '<div class="field"><label>Materiali</label><textarea id="eMat2">'+(b.materiali||'')+'</textarea></div>'+
-    '<div class="field"><label>Difetti aperti</label><textarea id="eDif">'+(b.difetti||'')+'</textarea></div>'+
-    '</div>'+
-
-    // TQ / TE
-    '<div class="sect">TQ / TE aperte</div>'+
-    '<div id="tqCont">'+((b.tqte&&b.tqte.length)?b.tqte.map(tqteHtml).join(''):
-      '<div style="color:var(--muted);font-size:13px;margin-bottom:8px;">Nessuna TQ/TE registrata.</div>')+'</div>'+
-    '<button class="btn btn-warn" style="margin-top:6px;" id="addTqBtn">+ Aggiungi TQ/TE</button>'+
-
-    // AZIONI
-    '<div style="display:flex;gap:10px;margin-top:20px;flex-wrap:wrap;">'+
-    '<button class="btn btn-success" id="saveBayBtn">Salva modifiche</button>'+
-    '<button class="btn btn-danger" id="clearBayBtn">Libera baia</button>'+
-    '</div>';
-
-  // Autocompila modello e MSN quando si cambia elicottero
-  document.getElementById('eMat').addEventListener('change',function(){
-    const h=A.fleet.find(x=>x.matricola===this.value);
-    if(h){ document.getElementById('eMod').value=h.modello||''; document.getElementById('eMsn').value=h.msn||''; }
-  });
-
-  document.getElementById('addTqBtn').addEventListener('click',()=>{
-    const nr={id:rid(),tipo:'TQ',numero:'',titolo:'',stato:'aperta',priorita:'media',data:''};
-    document.getElementById('tqCont').insertAdjacentHTML('beforeend',tqteHtml(nr));
-  });
-
-  document.getElementById('saveBayBtn').addEventListener('click',()=>{
-    const ob=Object.assign({},b);
-    b.stato=document.getElementById('eStato').value;
-    b.matricola=document.getElementById('eMat').value.trim();
-    b.modello=document.getElementById('eMod').value.trim();
-    b.msn=document.getElementById('eMsn').value.trim();
-    b.wo=document.getElementById('eWO').value.trim();
-    b.note=document.getElementById('eNote').value.trim();
-    // 4 date
-    b.ingressoPrevisto=fromLDT(document.getElementById('eIngPrev').value);
-    b.ingressoEffettivo=fromLDT(document.getElementById('eIngEff').value);
-    b.uscitaPrevista=fromLDT(document.getElementById('eUscPrev').value);
-    b.uscitaEffettiva=fromLDT(document.getElementById('eUscEff').value);
-    b.uscitaWOIniziale=fromLDT(document.getElementById('eUscWO').value);
-    // blocco
-    b.bloccoSelezionato=document.getElementById('eBlocco').value;
-    b.situazioneAttuale=document.getElementById('eSit').value.trim();
-    b.materiali=document.getElementById('eMat2').value.trim();
-    b.difetti=document.getElementById('eDif').value.trim();
-    b.tqte=readTqte();
-    if(b.stato==='libera') clearBay(b);
-    regMov(ob,b); save(); renderAll();
-    document.getElementById('bayDlg').close();
-  });
-
-  document.getElementById('clearBayBtn').addEventListener('click',()=>{
-    if(!confirm('Liberare '+b.nome+'?')) return;
-    const ob=Object.assign({},b); clearBay(b); regMov(ob,b); save(); renderAll();
-    document.getElementById('bayDlg').close();
-  });
-
-  document.getElementById('bayDlg').showModal();
-}
-
-// ============================================================
-// RENDER RITARDI
-// ============================================================
-function renderDelay(){
-  const now=new Date();
-  document.getElementById('delayBody').innerHTML=
-    A.bays.filter(b=>b.stato!=='libera'&&b.matricola).map(b=>{
-      const uPrev=b.uscitaPrevista?new Date(b.uscitaPrevista):null;
-      const uEff=b.uscitaEffettiva?new Date(b.uscitaEffettiva):null;
-      const iEff=b.ingressoEffettivo?new Date(b.ingressoEffettivo):null;
-      const iPrev=b.ingressoPrevisto?new Date(b.ingressoPrevisto):null;
-      const ref=uEff||now;
-      const dvp=uPrev?Math.max(0,ref-uPrev):0;
-      const sostaPrevMs=(uPrev&&iPrev)?uPrev-iPrev:0;
-      const sostaEffMs=(uEff&&iEff)?uEff-iEff:(iEff?now-iEff:0);
-      const deltaMs=sostaEffMs-sostaPrevMs;
-      let st='on time',pc='pill-ok';
-      if(dvp>86400000){st='alto ritardo';pc='pill-highlate';}
-      else if(dvp>0){st='in ritardo';pc='pill-late';}
-      return '<tr>'+
-        '<td>'+b.nome+'</td><td>'+b.matricola+'</td><td>'+(b.modello||'--')+'</td><td>'+(b.msn||'--')+'</td>'+
-        '<td>'+fdt(b.ingressoPrevisto)+'</td><td>'+fdt(b.ingressoEffettivo)+'</td>'+
-        '<td>'+fdt(b.uscitaPrevista)+'</td><td>'+fdt(b.uscitaEffettiva)+'</td>'+
-        '<td>'+(sostaPrevMs>0?msToH(sostaPrevMs)+'h':'--')+'</td>'+
-        '<td>'+(sostaEffMs>0?msToH(sostaEffMs)+'h':'--')+'</td>'+
-        '<td style="color:'+(deltaMs>0?'#fca5a5':deltaMs<0?'#86efac':'#94a3b8')+'">'+
-          (deltaMs!==0?(deltaMs>0?'+':'')+msToH(deltaMs)+'h':'--')+'</td>'+
-        '<td><span class="pill '+pc+'">'+st+'</span></td></tr>';
-    }).join('')||'<tr><td colspan="12" style="color:var(--muted);">Nessun elicottero in hangar.</td></tr>';
-}
-
-// ============================================================
-// RENDER PROBLEMI
-// ============================================================
-function renderProblems(){
-  const active=A.bays.filter(b=>b.stato!=='libera'&&b.matricola);
-  const freq={};
-  document.getElementById('problemBody').innerHTML=active.map(b=>{
-    const pr=getBloccoInfo(b);
-    if(pr.value) freq[pr.label]=(freq[pr.label]||0)+1;
-    const tOpen=(b.tqte||[]).filter(t=>t.stato==='aperta');
-    return '<tr>'+
-      '<td>'+b.nome+'</td><td>'+b.matricola+'</td><td>'+(b.modello||'--')+'</td>'+
-      '<td style="max-width:200px;white-space:normal;">'+(b.situazioneAttuale||'<span style="color:var(--muted);">--</span>')+'</td>'+
-      '<td>'+(tOpen.length?tOpen.map(t=>'<span class="pill pill-open">'+t.tipo+' '+t.numero+'</span>').join(' '):'--')+'</td>'+
-      '<td><span class="pill '+pr.cls+'">'+(pr.value?pr.label:'nessun blocco')+'</span></td></tr>';
-  }).join('')||'<tr><td colspan="6" style="color:var(--muted);">Nessun elicottero in hangar.</td></tr>';
-
-  document.getElementById('pfList').innerHTML=Object.entries(freq).sort((a,b)=>b[1]-a[1])
-    .map(([n,c])=>'<div class="pf-row"><span>'+n+'</span><span class="pf-count">'+c+'</span></div>').join('')||
-    '<div style="color:var(--muted);">Nessun blocco attivo.</div>';
-}
-
-// ============================================================
-// RENDER FLOTTA
-// ============================================================
 function renderFleet(){
-  const q=norm(document.getElementById('searchFleet').value);
-  document.getElementById('fleetBody').innerHTML=
-    A.fleet.filter(h=>[h.matricola,h.msn,h.modello,h.stato].some(v=>norm(v).includes(q)))
-    .sort((a,b)=>a.matricola.localeCompare(b.matricola))
-    .map(h=>{
-      const inBay=A.bays.find(b=>b.matricola===h.matricola&&b.stato!=='libera');
-      return '<tr>'+
-        '<td>'+h.matricola+'</td>'+
-        '<td>'+h.msn+'</td>'+
-        '<td><select class="fm" data-id="'+h.id+'">'+MODELS.map(m=>'<option '+(h.modello===m?'selected':'')+'>'+m+'</option>').join('')+'</select></td>'+
-        '<td><select class="fs" data-id="'+h.id+'">'+
-          ['disponibile','in manutenzione','in attesa materiali','fuori servizio']
-          .map(s=>'<option '+(h.stato===s?'selected':'')+'>'+s+'</option>').join('')+'</select></td>'+
-        '<td>'+(inBay?'<span class="pill pill-open">'+inBay.nome+'</span>':'--')+'</td>'+
-        '<td><button class="btn btn-danger btn-sm fd" data-id="'+h.id+'">Rimuovi</button></td></tr>';
-    }).join('');
+  const grid = document.getElementById('fleet-grid');
+  const fc = document.getElementById('fleet-count'); if(fc) fc.textContent = fleet.length + ' aeromobili';
+  if(!fleet.length){
+    grid.innerHTML = '<div class="empty-state"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="width:40px;height:40px;color:var(--color-text-faint)"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v2"/></svg><h3>Nessun aeromobile registrato</h3><p>Aggiungi il primo aeromobile della flotta.</p></div>';
+    return;
+  }
+  grid.innerHTML = fleet.map((ac,i) => {
+    const open = defects.filter(d=>d.ac===ac.reg&&d.status==='Aperto').length;
+    const aog  = defects.filter(d=>d.ac===ac.reg&&d.prio==='AOG').length;
+    const total= defects.filter(d=>d.ac===ac.reg&&d.status!=='Chiuso').length;
+    const statusColor = ac.status==='Operativo'?'var(--color-success)':ac.status==='AOG'?'var(--color-error)':'var(--color-warning)';
+    return `
+    <div class="chart-card" style="display:flex;flex-direction:column;gap:var(--space-3)">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between">
+        <div>
+          <div style="display:flex;align-items:center;gap:var(--space-2);margin-bottom:var(--space-1)">
+            <span class="ac-tag" style="font-size:var(--text-sm)">${ac.reg}</span>
+            <span style="width:8px;height:8px;border-radius:50%;background:${statusColor};display:inline-block;flex-shrink:0"></span>
+            <span style="font-size:var(--text-xs);color:${statusColor};font-weight:600">${ac.status}</span>
+          </div>
+          <div style="font-size:var(--text-base);font-weight:700;color:var(--color-text)">${ac.make}</div>
+          <div style="font-size:var(--text-sm);color:var(--color-text-muted)">${ac.model}</div>
+        </div>
+        <div style="display:flex;gap:var(--space-1)">
+          <button class="btn btn-ghost" style="padding:4px 10px;font-size:var(--text-xs)" onclick="editAC(${i})">Modifica</button>
+          <button class="btn" style="padding:4px 10px;font-size:var(--text-xs);background:var(--color-error-hl);color:var(--color-error)" onclick="deleteAC(${i})">Elimina</button>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:var(--space-2)">
+        <div style="background:var(--color-surface-offset);border-radius:var(--radius-md);padding:var(--space-2) var(--space-3)">
+          <div style="font-size:10px;color:var(--color-text-muted);font-weight:600;text-transform:uppercase;letter-spacing:.05em">MSN</div>
+          <div style="font-family:var(--font-mono);font-size:var(--text-xs);color:var(--color-text)">${ac.msn||'—'}</div>
+        </div>
+        <div style="background:var(--color-surface-offset);border-radius:var(--radius-md);padding:var(--space-2) var(--space-3)">
+          <div style="font-size:10px;color:var(--color-text-muted);font-weight:600;text-transform:uppercase;letter-spacing:.05em">Anno</div>
+          <div style="font-size:var(--text-xs);color:var(--color-text)">${ac.year||'—'}</div>
+        </div>
+        <div style="background:var(--color-surface-offset);border-radius:var(--radius-md);padding:var(--space-2) var(--space-3)">
+          <div style="font-size:10px;color:var(--color-text-muted);font-weight:600;text-transform:uppercase;letter-spacing:.05em">Base</div>
+          <div style="font-size:var(--text-xs);color:var(--color-text)">${ac.base||'—'}</div>
+        </div>
+        <div style="background:var(--color-surface-offset);border-radius:var(--radius-md);padding:var(--space-2) var(--space-3)">
+          <div style="font-size:10px;color:var(--color-text-muted);font-weight:600;text-transform:uppercase;letter-spacing:.05em">Ruolo</div>
+          <div style="font-size:var(--text-xs);color:var(--color-text)">${ac.role||'—'}</div>
+        </div>
+      </div>
+      <div style="display:flex;gap:var(--space-2)">
+        <div style="flex:1;text-align:center;padding:var(--space-2);background:${open>0?'var(--color-error-hl)':'var(--color-surface-offset)'};border-radius:var(--radius-md)">
+          <div style="font-size:var(--text-lg);font-weight:700;color:${open>0?'var(--color-error)':'var(--color-text)'}">${open}</div>
+          <div style="font-size:10px;color:var(--color-text-muted);text-transform:uppercase;letter-spacing:.05em">Aperti</div>
+        </div>
+        ${aog>0?`<div style="flex:1;text-align:center;padding:var(--space-2);background:var(--color-error);border-radius:var(--radius-md)">
+          <div style="font-size:var(--text-lg);font-weight:700;color:#fff">${aog}</div>
+          <div style="font-size:10px;color:rgba(255,255,255,.8);text-transform:uppercase;letter-spacing:.05em">AOG</div>
+        </div>`:''}
+        <div style="flex:1;text-align:center;padding:var(--space-2);background:var(--color-surface-offset);border-radius:var(--radius-md)">
+          <div style="font-size:var(--text-lg);font-weight:700;color:var(--color-text)">${total}</div>
+          <div style="font-size:10px;color:var(--color-text-muted);text-transform:uppercase;letter-spacing:.05em">Attivi tot.</div>
+        </div>
+      </div>
+      ${ac.notes?`<div style="font-size:var(--text-xs);color:var(--color-text-muted);border-top:1px solid var(--color-divider);padding-top:var(--space-2)">${ac.notes}</div>`:''}
+      <button class="btn btn-ghost" style="width:100%;justify-content:center;font-size:var(--text-xs)" onclick="showView('defects');filterAC('${ac.reg}')">
+        Vedi difetti →
+      </button>
+    </div>`;
+  }).join('');
 
-  document.querySelectorAll('.fm').forEach(el=>el.addEventListener('change',function(){
-    const h=A.fleet.find(x=>x.id===this.dataset.id);
-    if(h){ h.modello=this.value; A.bays.forEach(b=>{if(b.matricola===h.matricola)b.modello=h.modello;}); save(); renderAll(); }
-  }));
-  document.querySelectorAll('.fs').forEach(el=>el.addEventListener('change',function(){
-    const h=A.fleet.find(x=>x.id===this.dataset.id); if(h){ h.stato=this.value; save(); }
-  }));
-  document.querySelectorAll('.fd').forEach(btn=>btn.addEventListener('click',function(){
-    const h=A.fleet.find(x=>x.id===this.dataset.id);
-    const inBay=A.bays.find(b=>b.matricola===h.matricola&&b.stato!=='libera');
-    if(!confirm(inBay?h.matricola+' è in hangar ('+inBay.nome+'). Rimuovere dalla lista?':'Rimuovere '+h.matricola+'?')) return;
-    if(inBay){ clearBay(inBay); A.movements.unshift(mkMv(new Date(),'OUT',inBay.nome,h.matricola,'Rimosso da flotta')); }
-    A.fleet=A.fleet.filter(x=>x.id!==h.id); save(); renderAll();
-  }));
+  // also update sidebar dynamic nav items
+  updateSidebarFleet();
 }
 
-// ============================================================
-// RENDER MOVIMENTI
-// ============================================================
-function renderMov(){
-  document.getElementById('movBody').innerHTML=
-    [...A.movements].sort((a,b)=>new Date(b.timestamp)-new Date(a.timestamp)).slice(0,60)
-    .map(m=>'<tr><td>'+fdt(m.timestamp)+'</td><td>'+m.tipo+'</td><td>'+m.baia+'</td><td>'+m.matricola+'</td><td>'+m.dettaglio+'</td></tr>').join('');
+function updateSidebarFleet(){
+  // Remove old dynamic items and rebuild
+  const sidebar = document.getElementById('sidebar');
+  document.querySelectorAll('.nav-item-dynamic').forEach(el=>el.remove());
+  const insertBefore = sidebar.querySelector('.sidebar-fleet');
+  fleet.forEach(ac=>{
+    const div = document.createElement('div');
+    div.className = 'nav-item nav-item-dynamic';
+    div.onclick = ()=>{ showView('defects'); filterAC(ac.reg); };
+    div.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:16px;height:16px;flex-shrink:0"><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/></svg>${ac.reg} · ${ac.model}`;
+    sidebar.insertBefore(div, insertBefore);
+  });
 }
 
-// ============================================================
-// GRAFICI
-// ============================================================
-function dch(n){ if(CH[n]){ CH[n].destroy(); delete CH[n]; } }
+function getModelsForMake(make, selectedModel){
+  const models = MODELS_BY_MAKE[make] || [];
+  let opts = models.map(m=>`<option ${m===selectedModel?'selected':''}>${m}</option>`).join('');
+  // allow custom
+  if(selectedModel && !models.includes(selectedModel)) opts += `<option selected>${selectedModel}</option>`;
+  opts += `<option value="__custom__">— Altro modello...</option>`;
+  return opts;
+}
 
-function CO(yLbl){
-  return {
-    responsive:true, maintainAspectRatio:false,
-    plugins:{legend:{labels:{color:'#475569',font:{size:12}}}},
-    scales:{
-      x:{ticks:{color:'#475569',font:{size:11}},grid:{color:'rgba(0,0,0,.08)'},title:{display:true,text:'Giorno',color:'#475569'}},
-      y:{beginAtZero:true,ticks:{color:'#475569',font:{size:11}},grid:{color:'rgba(0,0,0,.08)'},title:{display:true,text:yLbl,color:'#475569'}}
-    }
+function openNewAC(){
+  editingACIdx = null;
+  document.getElementById('modal-title').textContent = 'Aggiungi Aeromobile';
+  showACModal(null);
+}
+function editAC(i){
+  editingACIdx = i;
+  document.getElementById('modal-title').textContent = 'Modifica Aeromobile — '+fleet[i].reg;
+  showACModal(fleet[i]);
+}
+let editingACIdx = null;
+
+function showACModal(ac){
+  const makeOpts = MAKES.map(m=>`<option ${ac?.make===m?'selected':''}>${m}</option>`).join('') + `<option value="__custom__" ${ac&&!MAKES.includes(ac.make)?'selected':''}>— Altra marca...</option>`;
+  const selMake = ac?.make||MAKES[0];
+  const modelOpts = getModelsForMake(selMake, ac?.model||'');
+
+  document.getElementById('modal-body').innerHTML = `
+    <div class="form-grid">
+      <div class="form-field">
+        <label class="form-label">Marchio / Costruttore *</label>
+        <select class="form-select" id="ac-make" onchange="onMakeChange()">
+          ${makeOpts}
+        </select>
+        <input class="form-input" id="ac-make-custom" placeholder="Inserisci costruttore..." style="display:none;margin-top:var(--space-2)" value="${ac&&!MAKES.includes(ac.make)?ac.make:''}">
+      </div>
+      <div class="form-field">
+        <label class="form-label">Modello *</label>
+        <select class="form-select" id="ac-model" onchange="onModelChange()">
+          ${modelOpts}
+        </select>
+        <input class="form-input" id="ac-model-custom" placeholder="Inserisci modello..." style="display:none;margin-top:var(--space-2)" value="${ac&&!getModelsForMake(selMake,[]).includes(ac.model)?ac.model:''}">
+      </div>
+      <div class="form-field">
+        <label class="form-label">Marchio di immatricolazione *</label>
+        <input class="form-input" id="ac-reg" placeholder="es. I-AVIE" value="${ac?.reg||''}" style="text-transform:uppercase">
+      </div>
+      <div class="form-field">
+        <label class="form-label">MSN (Manufacturer Serial Number)</label>
+        <input class="form-input" id="ac-msn" placeholder="es. 31706" value="${ac?.msn||''}">
+      </div>
+      <div class="form-field">
+        <label class="form-label">Anno di costruzione</label>
+        <input class="form-input" type="number" id="ac-year" min="1950" max="2030" placeholder="es. 2018" value="${ac?.year||''}">
+      </div>
+      <div class="form-field">
+        <label class="form-label">Base operativa</label>
+        <input class="form-input" id="ac-base" placeholder="es. Colico" value="${ac?.base||'Colico'}">
+      </div>
+      <div class="form-field">
+        <label class="form-label">Ruolo</label>
+        <select class="form-select" id="ac-role">
+          <option ${ac?.role==='HEMS'?'selected':''}>HEMS</option>
+          <option ${ac?.role==='SAR'?'selected':''}>SAR</option>
+          <option ${ac?.role==='VIP/EMS'?'selected':''}>VIP/EMS</option>
+          <option ${ac?.role==='Training'?'selected':''}>Training</option>
+          <option ${ac?.role==='Utility'?'selected':''}>Utility</option>
+          <option ${ac?.role==='Offshore'?'selected':''}>Offshore</option>
+        </select>
+      </div>
+      <div class="form-field">
+        <label class="form-label">Stato operativo</label>
+        <select class="form-select" id="ac-status">
+          <option ${(!ac||ac?.status==='Operativo')?'selected':''}>Operativo</option>
+          <option ${ac?.status==='AOG'?'selected':''}>AOG</option>
+          <option ${ac?.status==='Manutenzione programmata'?'selected':''}>Manutenzione programmata</option>
+          <option ${ac?.status==='Fuori servizio'?'selected':''}>Fuori servizio</option>
+        </select>
+      </div>
+      <div class="form-field span2">
+        <label class="form-label">Note (motori, configurazione, ecc.)</label>
+        <textarea class="form-textarea" id="ac-notes">${ac?.notes||''}</textarea>
+      </div>
+    </div>
+  `;
+  document.getElementById('modal-footer').innerHTML = `
+    <button class="btn btn-ghost" onclick="closeModal()">Annulla</button>
+    <button class="btn btn-primary" onclick="saveAC()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:14px;height:14px"><polyline points="20 6 9 17 4 12"/></svg>
+      ${editingACIdx!==null?'Salva Modifiche':'Aggiungi Aeromobile'}
+    </button>
+  `;
+  document.getElementById('modal-overlay').classList.add('open');
+
+  // Show custom fields if needed
+  if(ac && !MAKES.includes(ac.make)){
+    document.getElementById('ac-make').value='__custom__';
+    document.getElementById('ac-make-custom').style.display='block';
+  }
+}
+
+function onMakeChange(){
+  const sel = document.getElementById('ac-make');
+  const customInput = document.getElementById('ac-make-custom');
+  if(sel.value==='__custom__'){
+    customInput.style.display='block';
+    customInput.focus();
+    document.getElementById('ac-model').innerHTML=`<option value="__custom__">— Inserisci modello... —</option>`;
+    document.getElementById('ac-model-custom').style.display='block';
+  } else {
+    customInput.style.display='none';
+    document.getElementById('ac-model').innerHTML = getModelsForMake(sel.value,'');
+    document.getElementById('ac-model-custom').style.display='none';
+  }
+}
+
+function onModelChange(){
+  const sel = document.getElementById('ac-model');
+  const customInput = document.getElementById('ac-model-custom');
+  if(sel.value==='__custom__'){
+    customInput.style.display='block';
+    customInput.focus();
+  } else {
+    customInput.style.display='none';
+  }
+}
+
+function saveAC(){
+  const makeEl = document.getElementById('ac-make');
+  const make = makeEl.value==='__custom__' ? document.getElementById('ac-make-custom').value.trim() : makeEl.value;
+  const modelEl = document.getElementById('ac-model');
+  const model = modelEl.value==='__custom__' ? document.getElementById('ac-model-custom').value.trim() : modelEl.value;
+  const reg = document.getElementById('ac-reg').value.trim().toUpperCase();
+  if(!make){alert('Seleziona o inserisci il costruttore.');return;}
+  if(!model){alert('Seleziona o inserisci il modello.');return;}
+  if(!reg){alert('Inserire la marcatura di immatricolazione.');return;}
+  // Check duplicate reg (only on new)
+  if(editingACIdx===null && fleet.some(a=>a.reg===reg)){alert('Marcatura '+reg+' già presente in flotta.');return;}
+
+  const acData = {
+    reg, make, model,
+    msn: document.getElementById('ac-msn').value.trim(),
+    year: parseInt(document.getElementById('ac-year').value)||null,
+    base: document.getElementById('ac-base').value.trim(),
+    role: document.getElementById('ac-role').value,
+    status: document.getElementById('ac-status').value,
+    notes: document.getElementById('ac-notes').value.trim(),
   };
+
+  if(editingACIdx!==null){
+    fleet[editingACIdx] = acData;
+    toast('Aeromobile '+reg+' aggiornato ✓');
+  } else {
+    fleet.push(acData);
+    toast('Aeromobile '+reg+' aggiunto alla flotta ✓');
+  }
+
+  // Update select options in defect form filters
+  updateACSelects();
+  closeModal();
+  renderFleet();
 }
 
-function renderCharts(){
-  const d7=getLast7(), lb=d7.map(x=>x.label);
-
-  // Ritardi per giorno
-  const dc=d7.map(day=>A.bays.filter(b=>b.uscitaPrevista&&b.stato!=='libera'&&new Date(b.uscitaPrevista)<=day.end&&!b.uscitaEffettiva).length);
-  dch('dd'); CH.dd=new Chart(document.getElementById('chartDelayDay'),{type:'bar',
-    data:{labels:lb,datasets:[{label:'Elicotteri in ritardo',data:dc,
-      backgroundColor:'rgba(239,68,68,.75)',borderColor:'rgba(127,29,29,1)',borderWidth:1,borderRadius:5}]},
-    options:CO('Numero')});
-
-  // Ritardo medio in ore
-  const ad=d7.map(day=>{
-    const rel=A.bays.filter(b=>b.uscitaPrevista&&b.stato!=='libera'&&new Date(b.uscitaPrevista)<=day.end);
-    if(!rel.length) return 0;
-    return +(rel.reduce((s,b)=>{const ref=b.uscitaEffettiva?new Date(b.uscitaEffettiva):day.end;return s+Math.max(0,ref-new Date(b.uscitaPrevista));},0)/rel.length/3600000).toFixed(1);
-  });
-  dch('ad'); CH.ad=new Chart(document.getElementById('chartAvgDelay'),{type:'line',
-    data:{labels:lb,datasets:[{label:'Ritardo medio (h)',data:ad,
-      borderColor:'rgba(37,99,235,1)',backgroundColor:'rgba(37,99,235,.15)',fill:true,tension:.35,pointRadius:5,pointBackgroundColor:'#1d4ed8'}]},
-    options:CO('Ore')});
-
-  // Occupazione 7 gg
-  const occ7=d7.map(d=>(A.historicalOccupancy||{})[dayKey(d.start)]??A.bays.filter(b=>b.stato!=='libera').length);
-  dch('oc'); CH.oc=new Chart(document.getElementById('chartOcc7'),{type:'line',
-    data:{labels:lb,datasets:[{label:'Baie occupate',data:occ7,
-      borderColor:'rgba(34,197,94,1)',backgroundColor:'rgba(34,197,94,.18)',fill:true,tension:.25,pointRadius:5,pointBackgroundColor:'#16a34a'}]},
-    options:CO('Baie')});
-
-  // Movimenti
-  const inD=d7.map(d=>A.movements.filter(m=>m.tipo==='IN'&&new Date(m.timestamp)>=d.start&&new Date(m.timestamp)<=d.end).length);
-  const outD=d7.map(d=>A.movements.filter(m=>m.tipo==='OUT'&&new Date(m.timestamp)>=d.start&&new Date(m.timestamp)<=d.end).length);
-  dch('mv'); CH.mv=new Chart(document.getElementById('chartMov'),{type:'bar',
-    data:{labels:lb,datasets:[
-      {label:'Ingressi',data:inD,backgroundColor:'rgba(59,130,246,.85)',borderRadius:5},
-      {label:'Uscite',data:outD,backgroundColor:'rgba(234,179,8,.85)',borderRadius:5}
-    ]},
-    options:CO('Movimenti')});
-
-  // Sosta media prevista vs effettiva per matricola (ultime 5 con dati completi)
-  const withDates=A.bays.filter(b=>b.ingressoEffettivo&&b.uscitaPrevista&&b.matricola);
-  const sostaLbls=withDates.map(b=>b.matricola);
-  const sostaPrev=withDates.map(b=>{const ip=b.ingressoPrevisto||b.ingressoEffettivo;return msToH(Math.max(0,new Date(b.uscitaPrevista)-new Date(ip)));});
-  const sostaEff=withDates.map(b=>{const ref=b.uscitaEffettiva?new Date(b.uscitaEffettiva):new Date();return msToH(Math.max(0,ref-new Date(b.ingressoEffettivo)));});
-  dch('sosta'); CH.sosta=new Chart(document.getElementById('chartSosta'),{type:'bar',
-    data:{labels:sostaLbls,datasets:[
-      {label:'Sosta prevista (h)',data:sostaPrev,backgroundColor:'rgba(59,130,246,.7)',borderRadius:4},
-      {label:'Sosta effettiva (h)',data:sostaEff,backgroundColor:'rgba(239,68,68,.7)',borderRadius:4}
-    ]},
-    options:CO('Ore')});
-
-  // Blocchi per tipologia (pie/doughnut)
-  const bfreq={};
-  A.bays.forEach(b=>{if(b.bloccoSelezionato&&b.bloccoSelezionato!==''){const lbl=BLOCCO_OPTIONS.find(o=>o.value===b.bloccoSelezionato)?.label||b.bloccoSelezionato;bfreq[lbl]=(bfreq[lbl]||0)+1;}});
-  const bkeys=Object.keys(bfreq),bvals=bkeys.map(k=>bfreq[k]);
-  dch('bl'); CH.bl=new Chart(document.getElementById('chartBlocchi'),{type:'doughnut',
-    data:{labels:bkeys.length?bkeys:['Nessun blocco'],
-      datasets:[{data:bvals.length?bvals:[1],
-        backgroundColor:['rgba(59,130,246,.8)','rgba(239,68,68,.8)','rgba(234,179,8,.8)','rgba(249,115,22,.8)'],
-        borderColor:'#111827',borderWidth:3}]},
-    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{color:'#475569',font:{size:12}},position:'right'}}}});
+function deleteAC(i){
+  const ac = fleet[i];
+  const openCount = defects.filter(d=>d.ac===ac.reg&&d.status!=='Chiuso').length;
+  let msg = 'Eliminare '+ac.reg+' ('+ac.model+') dalla flotta?';
+  if(openCount>0) msg += '\n\n⚠ Attenzione: '+openCount+' difetti attivi associati a questo A/C.';
+  if(!confirm(msg)) return;
+  fleet.splice(i,1);
+  updateACSelects();
+  toast('Aeromobile rimosso dalla flotta');
+  renderFleet();
 }
 
-// ============================================================
-// RENDER ALL
-// ============================================================
-function renderAll(){
-  renderKpiTop(); renderKpiFull(); renderBays();
-  renderDelay(); renderProblems(); renderFleet(); renderMov();
-  renderCharts(); populateQuickBar();
+function updateACSelects(){
+  const regs = fleet.map(a=>a.reg);
+  const el = document.getElementById('filter-ac');
+  if(el){ const cur=el.value; el.innerHTML='<option value="">Tutti</option>'+regs.map(r=>`<option ${r===cur?'selected':''}>${r}</option>`).join(''); }
+}
+function getACOptionsForModal(selectedReg){
+  return fleet.map(a=>`<option ${a.reg===selectedReg?'selected':''}>${a.reg}</option>`).join('');
+}
+function getACType(reg){
+  const a = fleet.find(x=>x.reg===reg);
+  return a ? a.model : '';
 }
 
-// ============================================================
-// TABS
-// ============================================================
-document.querySelectorAll('.tab-btn').forEach(btn=>{
-  btn.addEventListener('click',function(){
-    document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
-    document.querySelectorAll('.tab-pane').forEach(p=>p.classList.remove('active'));
-    this.classList.add('active');
-    document.getElementById(this.dataset.tab).classList.add('active');
-  });
-});
+// ─── INIT ────────────────────────────────────────────────────────────
+lucide.createIcons();
+loadFromLocalStorage();
+(function(){
+  const el = document.getElementById('filter-ac');
+  if(el){ el.innerHTML = '<option value="">Tutti</option>'+fleet.map(a=>`<option>${a.reg}</option>`).join(''); }
+})();
+renderDashboard();
+updateSidebarFleet();
+document.getElementById('badge-open').textContent=defects.filter(d=>d.status==='Aperto').length;
 
-// ============================================================
-// AGGIUNGI ELICOTTERO
-// ============================================================
-function openAddDlg(){
-  document.getElementById('addReg').value='';
-  document.getElementById('addMsn').value='';
-  document.getElementById('addStato').value='disponibile';
-  document.getElementById('addModel').innerHTML=MODELS.map(m=>'<option>'+m+'</option>').join('');
-  document.getElementById('addDlg').showModal();
+// ─── PERSIST: localStorage auto-save ────────────────────────────────
+const LS_KEY = 'helifault_data_v1';
+
+function saveToLocalStorage(){
+  try {
+    localStorage.setItem(LS_KEY, JSON.stringify({defects, fleet, nextId, nextACId:fleet.length+1}));
+  } catch(e){ /* sandboxed iframe - silently skip */ }
 }
-document.getElementById('btnAddHeli').addEventListener('click',openAddDlg);
-document.getElementById('btnAddHeli2').addEventListener('click',openAddDlg);
-document.getElementById('saveAddBtn').addEventListener('click',()=>{
-  const reg=document.getElementById('addReg').value.trim().toUpperCase();
-  if(!reg){ alert('Inserisci la matricola.'); return; }
-  if(A.fleet.some(h=>h.matricola===reg)){ alert('Matricola già presente.'); return; }
-  A.fleet.push({id:rid(),matricola:reg,msn:document.getElementById('addMsn').value.trim(),
-    modello:document.getElementById('addModel').value,stato:document.getElementById('addStato').value});
-  save(); renderAll(); document.getElementById('addDlg').close();
-});
 
-// ============================================================
-// RICERCA FLOTTA
-// ============================================================
-document.getElementById('searchFleet').addEventListener('input',renderFleet);
+function loadFromLocalStorage(){
+  try {
+    const raw = localStorage.getItem(LS_KEY);
+    if(!raw) return false;
+    const d = JSON.parse(raw);
+    if(d.defects) defects = d.defects;
+    if(d.fleet) fleet = d.fleet;
+    if(d.nextId) nextId = d.nextId;
+    return true;
+  } catch(e){ return false; }
+}
 
-// ============================================================
-// EXPORT / IMPORT JSON
-// ============================================================
-document.getElementById('btnExport').addEventListener('click',()=>{
-  const blob=new Blob([JSON.stringify(A,null,2)],{type:'application/json'});
-  const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
-  a.download='hangar_'+new Date().toISOString().slice(0,10)+'.json'; a.click();
-});
-document.getElementById('btnImport').addEventListener('click',()=>document.getElementById('importFile').click());
-document.getElementById('importFile').addEventListener('change',function(){
-  const f=this.files[0]; if(!f) return;
-  const r=new FileReader(); r.onload=e=>{
-    try{
-      const d=JSON.parse(e.target.result);
-      if(!d.fleet||!d.bays){ alert('File non valido.'); return; }
-      A=d; save(); renderAll(); alert('Dati importati.');
-    }catch(err){ alert('Errore JSON.'); }
-  }; r.readAsText(f); this.value='';
-});
+// ─── EXPORT / IMPORT JSON ────────────────────────────────────────────
+function exportJSON(){
+  const payload = {
+    version: 1,
+    exported_at: new Date().toISOString(),
+    exported_by: 'HeliFault EMS · Avincis Colico',
+    defects,
+    fleet,
+    nextId
+  };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], {type:'application/json'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  const date = new Date().toISOString().slice(0,10);
+  a.download = `HeliFault_backup_${date}.json`;
+  a.click();
+  toast('✓ Database salvato — ' + date);
+}
 
-// ============================================================
-// RESET DEMO
-// ============================================================
-document.getElementById('btnReset').addEventListener('click',()=>{
-  if(!confirm('Ripristinare i dati demo? Le modifiche saranno perse.')) return;
-  A=defaultData(); save(); renderAll();
-});
+function importJSON(evt){
+  const file = evt.target.files[0];
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = function(e){
+    try {
+      const d = JSON.parse(e.target.result);
+      if(!d.defects || !d.fleet){
+        alert('File non valido: struttura JSON non riconosciuta.');
+        return;
+      }
+      if(!confirm(`Importare ${d.defects.length} difetti e ${d.fleet.length} aeromobili da "${file.name}"?\nI dati attuali in memoria saranno sostituiti.`)) return;
+      defects = d.defects;
+      fleet = d.fleet;
+      nextId = d.nextId || (defects.length + 1);
+      saveToLocalStorage();
+      // refresh all views
+      renderDashboard();
+      updateSidebarFleet();
+      updateACSelects();
+      document.getElementById('badge-open').textContent = defects.filter(d=>d.status==='Aperto').length;
+      if(currentView==='defects') renderTable();
+      if(currentView==='recurrence') renderRecurrence();
+      if(currentView==='fleet') renderFleet();
+      toast('✓ Database importato — ' + defects.length + ' difetti, ' + fleet.length + ' A/C');
+    } catch(err){
+      alert('Errore nella lettura del file JSON: ' + err.message);
+    }
+    evt.target.value = '';
+  };
+  reader.readAsText(file);
+}
 
-// ============================================================
-// AVVIO
-// ============================================================
-initApp();
 </script>
 </body>
 </html>

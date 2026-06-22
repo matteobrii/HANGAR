@@ -1,0 +1,309 @@
+{
+  "version": 1,
+  "saved_at": "2026-06-22T08:15:23.808Z",
+  "defects": [
+    {
+      "id": "DEF-001",
+      "ac": "I-AVIE",
+      "type": "AW139",
+      "ata": "71",
+      "ata_desc": "Power Plant",
+      "desc": "Vibrazione anomala al motore n.1 — parametri FDR in range limite",
+      "prio": "Alta",
+      "status": "In Lavorazione",
+      "date_open": "2026-06-01",
+      "date_close": null,
+      "mel": true,
+      "mel_ref": "MEL 71-01A",
+      "wo": "WO-4421",
+      "pn_affected": "3410100-1",
+      "sn_affected": "AW139-E1-05221",
+      "reported_by": "M. Brizzi",
+      "action_taken": "Installato accelerometro temporaneo. Analisi vibrazioni in corso con Eng.",
+      "notes": "Occorrenza precedente su stesso motore: vedi DEF-085 (2025-11-12).",
+      "history": [
+        {
+          "t": "2026-06-01 08:30",
+          "u": "M. Brizzi",
+          "e": "Difetto aperto. Pianificato check vibrazioni."
+        },
+        {
+          "t": "2026-06-03 14:00",
+          "u": "Eng. Office",
+          "e": "Analisi richiesta a AgustaWestland. TR aperto."
+        }
+      ]
+    },
+    {
+      "id": "DEF-002",
+      "ac": "I-AVIF",
+      "type": "AW139",
+      "ata": "32",
+      "ata_desc": "Landing Gear",
+      "desc": "WARNNG LAMP \"GEAR NOT DOWN\" intermittente durante approccio",
+      "prio": "AOG",
+      "status": "Aperto",
+      "date_open": "2026-06-18",
+      "date_close": null,
+      "mel": false,
+      "mel_ref": "",
+      "wo": "WO-4455",
+      "pn_affected": "3903030-7",
+      "sn_affected": "AW139-LG-1883",
+      "reported_by": "Pilota",
+      "action_taken": "A/C ferma a terra. Troubleshooting avviato.",
+      "notes": "AOG — operazioni sospese.",
+      "history": [
+        {
+          "t": "2026-06-18 07:15",
+          "u": "Pilota",
+          "e": "Segnalazione post-flight."
+        },
+        {
+          "t": "2026-06-18 09:00",
+          "u": "M. Brizzi",
+          "e": "WO aperta. A/C in AOG. Tecnico allocato."
+        }
+      ]
+    },
+    {
+      "id": "DEF-003",
+      "ac": "I-EMSA",
+      "type": "AW169",
+      "ata": "21",
+      "ata_desc": "Air Conditioning",
+      "desc": "Ventilazione cabina insufficiente — temperatura non raggiunta",
+      "prio": "Bassa",
+      "status": "Differito",
+      "date_open": "2026-06-05",
+      "date_close": null,
+      "mel": true,
+      "mel_ref": "MEL 21-03B",
+      "wo": "WO-4398",
+      "pn_affected": "40701-070-1",
+      "sn_affected": "AW169-AC-0441",
+      "reported_by": "Crew",
+      "action_taken": "Monitoraggio in corso. Pianificato intervento al prossimo check.",
+      "notes": "Differito MEL — prossimo check 50h.",
+      "history": [
+        {
+          "t": "2026-06-05 15:00",
+          "u": "Crew",
+          "e": "Segnalazione post-missione."
+        },
+        {
+          "t": "2026-06-06 09:00",
+          "u": "M. Brizzi",
+          "e": "Valutato MEL 21-03B applicabile. Differito."
+        }
+      ]
+    },
+    {
+      "id": "DEF-004",
+      "ac": "I-EMSB",
+      "type": "BK117-D2",
+      "ata": "29",
+      "ata_desc": "Hydraulic Power",
+      "desc": "Livello olio idraulico sotto MIN — perdita lenta non localizzata",
+      "prio": "Alta",
+      "status": "In Lavorazione",
+      "date_open": "2026-06-10",
+      "date_close": null,
+      "mel": false,
+      "mel_ref": "",
+      "wo": "WO-4410",
+      "pn_affected": "MBB-HYD-29-110",
+      "sn_affected": "BK117-HYD-0992",
+      "reported_by": "AME Rossi",
+      "action_taken": "Visual inspection completa. Leak check con UV lamp schedulato.",
+      "notes": "2a occorrenza del mese. Vedi DEF-089.",
+      "history": [
+        {
+          "t": "2026-06-10 11:00",
+          "u": "AME Rossi",
+          "e": "Rilevato durante daily check."
+        },
+        {
+          "t": "2026-06-11 10:00",
+          "u": "M. Brizzi",
+          "e": "Coordinato leak check specialistico."
+        }
+      ]
+    },
+    {
+      "id": "DEF-005",
+      "ac": "I-AVIE",
+      "type": "AW139",
+      "ata": "71",
+      "ata_desc": "Power Plant",
+      "desc": "ENG 2 — TQ split superiore a 5% in hover OEI training",
+      "prio": "Media",
+      "status": "Chiuso",
+      "date_open": "2026-05-20",
+      "date_close": "2026-05-28",
+      "mel": false,
+      "mel_ref": "",
+      "wo": "WO-4380",
+      "pn_affected": "1001108-1",
+      "sn_affected": "AW139-E2-03112",
+      "reported_by": "Pilota",
+      "action_taken": "Richiamato FADEC. Parametri rientrati in specifica dopo reset.",
+      "notes": "Risolto.",
+      "history": [
+        {
+          "t": "2026-05-20 13:00",
+          "u": "Pilota",
+          "e": "Segnalazione."
+        },
+        {
+          "t": "2026-05-28 09:00",
+          "u": "AME Ferrari",
+          "e": "FADEC reset effettuato. Parametri OK. Difetto chiuso."
+        }
+      ]
+    },
+    {
+      "id": "DEF-006",
+      "ac": "I-AVIF",
+      "type": "AW139",
+      "ata": "34",
+      "ata_desc": "Navigation",
+      "desc": "GPS2 intermittente — loss of signal per 10-15 sec in volo",
+      "prio": "Media",
+      "status": "Aperto",
+      "date_open": "2026-06-14",
+      "date_close": null,
+      "mel": true,
+      "mel_ref": "MEL 34-11A",
+      "wo": "WO-4440",
+      "pn_affected": "822-1966-001",
+      "sn_affected": "GPS2-AW139-0211",
+      "reported_by": "Pilota",
+      "action_taken": "Log scaricato. Analisi in attesa risposta OEM.",
+      "notes": "",
+      "history": [
+        {
+          "t": "2026-06-14 18:00",
+          "u": "Pilota",
+          "e": "Segnalazione post-flight."
+        },
+        {
+          "t": "2026-06-15 08:30",
+          "u": "M. Brizzi",
+          "e": "Avviato contatto con Honeywell."
+        }
+      ]
+    },
+    {
+      "id": "DEF-007",
+      "ac": "I-EMSA",
+      "type": "AW169",
+      "ata": "21",
+      "ata_desc": "Air Conditioning",
+      "desc": "ECS FAULT light — codice errore 211 su MFD",
+      "prio": "Media",
+      "status": "Aperto",
+      "date_open": "2026-06-19",
+      "date_close": null,
+      "mel": true,
+      "mel_ref": "MEL 21-05",
+      "wo": "WO-4458",
+      "pn_affected": "40701-110-2",
+      "sn_affected": "AW169-ECS-0553",
+      "reported_by": "Crew",
+      "action_taken": "Fault isolation in corso.",
+      "notes": "Terza occorrenza su I-EMSA per sistema 21.",
+      "history": [
+        {
+          "t": "2026-06-19 11:00",
+          "u": "Crew",
+          "e": "Segnalazione."
+        },
+        {
+          "t": "2026-06-20 08:00",
+          "u": "M. Brizzi",
+          "e": "WO aperta. ATA 21 ripetitivo — escalation a Eng."
+        }
+      ]
+    },
+    {
+      "id": "DEF-008",
+      "ac": "I-EMSB",
+      "type": "BK117-D2",
+      "ata": "29",
+      "ata_desc": "Hydraulic Power",
+      "desc": "HYDRAULIC PRESS LOW warning a terra — check post maint",
+      "prio": "Alta",
+      "status": "Chiuso",
+      "date_open": "2026-06-02",
+      "date_close": "2026-06-04",
+      "mel": false,
+      "mel_ref": "",
+      "wo": "WO-4393",
+      "pn_affected": "MBB-HYD-29-110",
+      "sn_affected": "BK117-HYD-0992",
+      "reported_by": "AME Rossi",
+      "action_taken": "Ricaricato accumulatore. Pressione OK dopo test.",
+      "notes": "Stessa unità DEF-004.",
+      "history": [
+        {
+          "t": "2026-06-02 09:00",
+          "u": "AME Rossi",
+          "e": "Warning durante rullaggio."
+        },
+        {
+          "t": "2026-06-04 14:00",
+          "u": "AME Rossi",
+          "e": "Accumulatore ricaricato. Test OK. Chiuso."
+        }
+      ]
+    }
+  ],
+  "fleet": [
+    {
+      "reg": "I-AVIE",
+      "make": "Leonardo",
+      "model": "AW139",
+      "msn": "31706",
+      "year": 2014,
+      "base": "Colico",
+      "role": "HEMS",
+      "status": "Operativo",
+      "notes": "Motori P&W PT6C-67C. Config. HEMS full."
+    },
+    {
+      "reg": "I-AVIF",
+      "make": "Leonardo",
+      "model": "AW139",
+      "msn": "31742",
+      "year": 2015,
+      "base": "Colico",
+      "role": "HEMS",
+      "status": "Operativo",
+      "notes": ""
+    },
+    {
+      "reg": "I-EMSA",
+      "make": "Leonardo",
+      "model": "AW169",
+      "msn": "69021",
+      "year": 2019,
+      "base": "Colico",
+      "role": "HEMS",
+      "status": "Operativo",
+      "notes": "Motori P&W PW210A. Versione LUH."
+    },
+    {
+      "reg": "I-EMSB",
+      "make": "Airbus Helicopters",
+      "model": "BK117-D2",
+      "msn": "20219",
+      "year": 2016,
+      "base": "Colico",
+      "role": "HEMS",
+      "status": "Operativo",
+      "notes": "Motori Turbomeca Arriel 2E."
+    }
+  ],
+  "nextId": 9
+}

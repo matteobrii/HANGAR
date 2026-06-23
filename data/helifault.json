@@ -1,26 +1,26 @@
 {
   "version": 1,
-  "saved_at": "2026-06-22T10:14:34.343Z",
+  "saved_at": "2026-06-23T05:58:45.868Z",
   "defects": [
     {
-      "id": "DEF-001",
-      "ac": "I-AVIE",
+      "ac": "I-MVRK",
       "type": "AW139",
       "ata": "71",
       "ata_desc": "Power Plant",
       "desc": "Vibrazione anomala al motore n.1 — parametri FDR in range limite",
-      "prio": "Alta",
-      "status": "In Lavorazione",
-      "date_open": "2026-06-01",
-      "date_close": null,
-      "mel": true,
-      "mel_ref": "MEL 71-01A",
-      "wo": "WO-4421",
       "pn_affected": "3410100-1",
       "sn_affected": "AW139-E1-05221",
+      "wo": "WO-4421",
       "reported_by": "M. Brizzi",
+      "prio": "Alta",
+      "status": "Chiuso",
+      "mel": true,
+      "mel_ref": "MEL 71-01A",
+      "date_open": "2026-06-01",
+      "date_close": null,
       "action_taken": "Installato accelerometro temporaneo. Analisi vibrazioni in corso con Eng.",
       "notes": "Occorrenza precedente su stesso motore: vedi DEF-085 (2025-11-12).",
+      "id": "DEF-001",
       "history": [
         {
           "t": "2026-06-01 08:30",
@@ -31,6 +31,11 @@
           "t": "2026-06-03 14:00",
           "u": "Eng. Office",
           "e": "Analisi richiesta a AgustaWestland. TR aperto."
+        },
+        {
+          "t": "2026-06-23 05:58",
+          "u": "M. Brizzi",
+          "e": "Difetto aggiornato."
         }
       ]
     },
@@ -82,24 +87,24 @@
       ]
     },
     {
-      "id": "DEF-003",
       "ac": "I-EMSA",
       "type": "AW169",
       "ata": "21",
       "ata_desc": "Air Conditioning",
       "desc": "Ventilazione cabina insufficiente — temperatura non raggiunta",
-      "prio": "Bassa",
-      "status": "Differito",
-      "date_open": "2026-06-05",
-      "date_close": null,
-      "mel": true,
-      "mel_ref": "MEL 21-03B",
-      "wo": "WO-4398",
       "pn_affected": "40701-070-1",
       "sn_affected": "AW169-AC-0441",
+      "wo": "WO-4398",
       "reported_by": "Crew",
+      "prio": "Bassa",
+      "status": "Chiuso",
+      "mel": true,
+      "mel_ref": "MEL 21-03B",
+      "date_open": "2026-06-05",
+      "date_close": null,
       "action_taken": "Monitoraggio in corso. Pianificato intervento al prossimo check.",
       "notes": "Differito MEL — prossimo check 50h.",
+      "id": "DEF-003",
       "history": [
         {
           "t": "2026-06-05 15:00",
@@ -110,28 +115,33 @@
           "t": "2026-06-06 09:00",
           "u": "M. Brizzi",
           "e": "Valutato MEL 21-03B applicabile. Differito."
+        },
+        {
+          "t": "2026-06-23 05:58",
+          "u": "M. Brizzi",
+          "e": "Difetto aggiornato."
         }
       ]
     },
     {
-      "id": "DEF-004",
       "ac": "I-EMSB",
       "type": "BK117-D2",
       "ata": "29",
       "ata_desc": "Hydraulic Power",
       "desc": "Livello olio idraulico sotto MIN — perdita lenta non localizzata",
-      "prio": "Alta",
-      "status": "In Lavorazione",
-      "date_open": "2026-06-10",
-      "date_close": null,
-      "mel": false,
-      "mel_ref": "",
-      "wo": "WO-4410",
       "pn_affected": "MBB-HYD-29-110",
       "sn_affected": "BK117-HYD-0992",
+      "wo": "WO-4410",
       "reported_by": "AME Rossi",
+      "prio": "Alta",
+      "status": "Chiuso",
+      "mel": false,
+      "mel_ref": "",
+      "date_open": "2026-06-10",
+      "date_close": null,
       "action_taken": "Visual inspection completa. Leak check con UV lamp schedulato.",
       "notes": "2a occorrenza del mese. Vedi DEF-089.",
+      "id": "DEF-004",
       "history": [
         {
           "t": "2026-06-10 11:00",
@@ -142,6 +152,11 @@
           "t": "2026-06-11 10:00",
           "u": "M. Brizzi",
           "e": "Coordinato leak check specialistico."
+        },
+        {
+          "t": "2026-06-23 05:58",
+          "u": "M. Brizzi",
+          "e": "Difetto aggiornato."
         }
       ]
     },
@@ -188,24 +203,24 @@
       ]
     },
     {
-      "id": "DEF-006",
       "ac": "I-AVIF",
       "type": "AW139",
       "ata": "34",
       "ata_desc": "Navigation",
       "desc": "GPS2 intermittente — loss of signal per 10-15 sec in volo",
-      "prio": "Media",
-      "status": "Aperto",
-      "date_open": "2026-06-14",
-      "date_close": null,
-      "mel": true,
-      "mel_ref": "MEL 34-11A",
-      "wo": "WO-4440",
       "pn_affected": "822-1966-001",
       "sn_affected": "GPS2-AW139-0211",
+      "wo": "WO-4440",
       "reported_by": "Pilota",
+      "prio": "Media",
+      "status": "Chiuso",
+      "mel": true,
+      "mel_ref": "MEL 34-11A",
+      "date_open": "2026-06-14",
+      "date_close": null,
       "action_taken": "Log scaricato. Analisi in attesa risposta OEM.",
       "notes": "",
+      "id": "DEF-006",
       "history": [
         {
           "t": "2026-06-14 18:00",
@@ -216,6 +231,11 @@
           "t": "2026-06-15 08:30",
           "u": "M. Brizzi",
           "e": "Avviato contatto con Honeywell."
+        },
+        {
+          "t": "2026-06-23 05:58",
+          "u": "M. Brizzi",
+          "e": "Difetto aggiornato."
         }
       ]
     },
